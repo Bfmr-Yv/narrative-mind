@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd.exe *)",
+      "Bash(uniq -d /c/Users/userf/Desktop/xmgl_xs/docs/00-ACTIVE-CONTEXT.md)",
+      "Bash(python3 *)",
+      "Bash(uv run *)",
+      "Bash(echo \"EXIT CODE: $?\")",
+      "Bash(uv python *)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
