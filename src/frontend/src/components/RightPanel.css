@@ -113,10 +113,13 @@
 .evidence-item { padding: 0.25rem 0.4rem; margin-bottom: 0.15rem; background: var(--light-bg); border-radius: var(--radius-sm); font-size: 0.75rem; color: var(--light-text-secondary); word-break: break-word; }
 
 /* Entity suggestions (Item 2) */
-.scan-btn { display: block; width: 100%; padding: 0.5rem; border: 1px dashed var(--primary); border-radius: var(--radius-sm); background: transparent; color: var(--primary); font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
+.scan-btn { display: block; width: 100%; padding: 0.6rem; border: 1px dashed var(--primary); border-radius: var(--radius-sm); background: transparent; color: var(--primary); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
 .scan-btn:hover:not(:disabled) { background: var(--primary-light, #e8ecfd); }
 .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.scan-btn-secondary { margin-top: 0.5rem; border-style: solid; border-color: var(--light-border); color: var(--light-text-secondary); font-size: 0.75rem; font-weight: 400; padding: 0.4rem; }
 .scan-error { font-size: 0.75rem; color: var(--danger); padding: 0.4rem 0; }
+.scan-empty { text-align: center; padding: 1rem 0; color: var(--light-text-secondary); font-size: 0.8rem; }
+.scan-empty-icon { font-size: 1.5rem; display: block; margin-bottom: 0.5rem; }
 .suggestion-list { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
 .suggestion-card { padding: 0.5rem; border: 1px solid var(--light-border); border-radius: var(--radius-sm); background: var(--light-surface); }
 .suggestion-header { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; }
@@ -127,3 +130,19 @@
 .suggestion-add-btn { margin-left: auto; padding: 0.15rem 0.5rem; border: 1px solid var(--primary); border-radius: var(--radius-sm); background: transparent; color: var(--primary); font-size: 0.7rem; cursor: pointer; }
 .suggestion-add-btn:hover { background: var(--primary); color: #fff; }
 .suggestion-context { font-size: 0.7rem; color: var(--light-text-secondary); background: var(--light-bg); padding: 0.3rem 0.4rem; border-radius: 4px; line-height: 1.4; word-break: break-word; }
+
+/* Discover tab */
+.tab-discover { padding: 1rem; }
+.discover-hero { text-align: center; padding: 0.5rem 0 1rem; }
+.discover-hero-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.discover-hero h3 { font-size: 1.1rem; margin: 0 0 0.3rem; color: var(--light-text); }
+.discover-hero p { font-size: 0.8rem; color: var(--light-text-secondary); margin: 0; }
+.discover-info { display: flex; gap: 1rem; justify-content: center; margin-bottom: 1rem; font-size: 0.75rem; color: var(--light-text-secondary); }
+.discover-info-item { display: flex; align-items: center; gap: 0.3rem; }
+.discover-info-icon { font-size: 0.9rem; }
+
+/* No character hint */
+.no-char-hint { font-size: 0.72rem; background: #fff9e6; border: 1px solid #ffd43b; border-radius: 4px; padding: 0.4rem 0.6rem; margin-bottom: 0.5rem; color: #6b5900; line-height: 1.5; }
+
+/* PAD character label */
+.char-label { background: #e8f5e9 !important; color: #2e7d32 !important; }

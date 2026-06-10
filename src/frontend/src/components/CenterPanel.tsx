@@ -162,6 +162,18 @@ const CenterPanel: React.FC = () => {
         />
 
         <button
+          className="discover-btn"
+          onClick={() => {
+            dispatch({ type: 'TOGGLE_RIGHT_PANEL' });
+            dispatch({ type: 'SELECT_TAB', payload: 'discover' });
+          }}
+          disabled={!chapterText.trim()}
+          title="扫描文本中的角色和地点"
+        >
+          &#x1f50d; 发现
+        </button>
+
+        <button
           className="analyze-btn"
           onClick={handleAnalyze}
           disabled={!chapterText.trim() || state.isAnalyzing}
