@@ -8,8 +8,6 @@ import type {
   ProjectSettings,
   Chapter,
   AnalysisRecord,
-  AnalysisRecordFull,
-  EntitySuggestionsResponse,
 } from '../types';
 
 const API_BASE_URL = '/api';
@@ -107,7 +105,7 @@ class ApiClient {
     return this.fetch(`/projects/${projectId}/chapters/${chapterId}/analysis`);
   }
 
-  async getAnalysisDetail(projectId: string, chapterId: string, analysisId: string): Promise<AnalysisRecordFull> {
+  async getAnalysisDetail(projectId: string, chapterId: string, analysisId: string): Promise<AnalysisRecord & { response: OrchestratorResponse }> {
     return this.fetch(`/projects/${projectId}/chapters/${chapterId}/analysis/${analysisId}`);
   }
 
@@ -118,14 +116,6 @@ class ApiClient {
   }): Promise<AnalysisRecord> {
     return this.fetch(`/projects/${projectId}/chapters/${chapterId}/analysis`, {
       method: 'POST', body: JSON.stringify(record),
-    });
-  }
-
-  // ---- Entity Suggestions (Item 2) ----
-
-  async suggestEntities(projectId: string, body: { chapter_text?: string; chapter_id?: string }): Promise<EntitySuggestionsResponse> {
-    return this.fetch(`/projects/${projectId}/suggestions/entities`, {
-      method: 'POST', body: JSON.stringify(body),
     });
   }
 }

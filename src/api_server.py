@@ -4,9 +4,12 @@ Narrative Mind API 服务器 — Phase 1
 职责：提供 REST API 接口，连接前端和 Python 后端。
 """
 
+from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # 可靠路径解析：支持开发模式 (python api_server.py) 和打包模式 (EXE)
 if getattr(sys, 'frozen', False):

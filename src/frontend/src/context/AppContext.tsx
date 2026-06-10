@@ -1,13 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import type {
-  AppState,
-  AppAction,
-  Chapter,
-  ProjectMeta,
-  ProjectSettings,
-  OrchestratorResponse,
-  AnalysisHistoryEntry,
-  AnalysisRecord,
+  AppState, AppAction, Chapter, ProjectMeta, ProjectSettings,
+  OrchestratorResponse, AnalysisHistoryEntry, AnalysisRecord, RightTab,
 } from '../types';
 import { EMPTY_SETTINGS } from '../types';
 import { apiClient } from '../api/client';
@@ -20,27 +14,52 @@ const initialState: AppState = {
   projects: [],
   activeProjectId: null,
   projectSettings: null,
-
   chapters: [],
   activeChapterId: null,
   selectedCharacterId: '',
   selectedLocation: '',
-
   currentAnalysis: null,
   analysisHistory: [],
   isAnalyzing: false,
   analysisError: null,
-
   activeRightTab: 'analysis',
   compareSlotA: null,
   compareSlotB: null,
   leftPanelOpen: true,
   rightPanelOpen: true,
   showProjectSettings: false,
-
   costData: { currentMonth: 0, monthlyBudget: 20, breakdown: [] },
   apiConnected: false,
 };
+
+// =========================================================================
+// Helper: merge characters/locations from analysis into settings
+// =========================================================================
+
+function mergeDiscoveredEntities(state: AppState, response: OrchestratorResponse): {
+  settings: ProjectSettings | null;
+  chars: string[];
+  locs: string[];
+} {
+  const base = state.projectSettings || EMPTY_SETTINGS;
+  const sa = response.scene_analysis;
+  const eu = response.extracted_entities?.updated_settings;
+
+  // Collect from all sources
+  const fromSA = { chars: sa?.characters ?? [], locs: sa?.locations ?? [] };
+  const fromEU = { chars: eu?.characters ?? [], locs: eu?.locations ?? [] };
+
+  const mergedChars = Array.from(new Set([...base.characters, ...fromSA.chars, ...fromEU.chars]));
+  const mergedLocs = Array.from(new Set([...base.locations, ...fromSA.locs, ...fromEU.locs]));
+
+  const changed = mergedChars.length !== base.characters.length || mergedLocs.length !== base.locations.length;
+
+  return {
+    settings: changed ? { ...base, characters: mergedChars, locations: mergedLocs } : state.projectSettings,
+    chars: mergedChars,
+    locs: mergedLocs,
+  };
+}
 
 // =========================================================================
 // Reducer
@@ -49,31 +68,25 @@ const initialState: AppState = {
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
 
-    // ---- Project management ----
     case 'SET_PROJECTS':
       return { ...state, projects: action.payload };
 
-    case 'SET_ACTIVE_PROJECT': {
-      // Entering editor — reset editor state
+    case 'SET_ACTIVE_PROJECT':
       return {
-        ...state,
-        activeProjectId: action.payload,
-        chapters: [],
-        activeChapterId: null,
-        currentAnalysis: null,
-        analysisHistory: [],
-        analysisError: null,
-        activeRightTab: 'analysis',
+        ...state, activeProjectId: action.payload,
+        chapters: [], activeChapterId: null,
+        currentAnalysis: null, analysisHistory: [],
+        analysisError: null, activeRightTab: 'analysis',
+      };
+
+    case 'SET_PROJECT_SETTINGS': {
+      const settings = action.payload;
+      return {
+        ...state, projectSettings: settings,
+        selectedCharacterId: settings.characters[0] || state.selectedCharacterId || '',
+        selectedLocation: settings.locations[0] || state.selectedLocation || '',
       };
     }
-
-    case 'SET_PROJECT_SETTINGS':
-      return {
-        ...state,
-        projectSettings: action.payload,
-        selectedCharacterId: action.payload.characters[0] || '',
-        selectedLocation: action.payload.locations[0] || '',
-      };
 
     case 'ADD_PROJECT':
       return { ...state, projects: [action.payload, ...state.projects] };
@@ -85,154 +98,104 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, showProjectSettings: !state.showProjectSettings };
 
     case 'RETURN_TO_DASHBOARD':
-      return {
-        ...initialState,
-        projects: state.projects,
-        apiConnected: state.apiConnected,
-        costData: state.costData,
-      };
+      return { ...initialState, projects: state.projects, apiConnected: state.apiConnected, costData: state.costData };
 
-    // ---- Chapters ----
     case 'SET_CHAPTERS':
       return { ...state, chapters: action.payload };
 
     case 'ADD_CHAPTER':
-      return {
-        ...state,
-        chapters: [...state.chapters, action.payload],
-        activeChapterId: action.payload.id,
-      };
+      return { ...state, chapters: [...state.chapters, action.payload], activeChapterId: action.payload.id };
 
     case 'SELECT_CHAPTER':
-      return { ...state, activeChapterId: action.payload };
+      return { ...state, activeChapterId: action.payload, currentAnalysis: null, analysisError: null };
 
     case 'UPDATE_CHAPTER_TITLE':
-      return {
-        ...state,
-        chapters: state.chapters.map(ch =>
-          ch.id === action.payload.id ? { ...ch, title: action.payload.title } : ch
-        ),
-      };
+      return { ...state, chapters: state.chapters.map(ch =>
+        ch.id === action.payload.id ? { ...ch, title: action.payload.title } : ch) };
 
     case 'UPDATE_CHAPTER_TEXT':
-      return {
-        ...state,
-        chapters: state.chapters.map(ch =>
-          ch.id === action.payload.id ? { ...ch, text: action.payload.text } : ch
-        ),
-      };
+      return { ...state, chapters: state.chapters.map(ch =>
+        ch.id === action.payload.id ? { ...ch, text: action.payload.text } : ch) };
 
     case 'DELETE_CHAPTER': {
       if (state.chapters.length <= 1) return state;
       const filtered = state.chapters.filter(ch => ch.id !== action.payload);
-      return {
-        ...state,
-        chapters: filtered,
-        activeChapterId: state.activeChapterId === action.payload ? filtered[0]?.id ?? null : state.activeChapterId,
-      };
+      return { ...state, chapters: filtered,
+        activeChapterId: state.activeChapterId === action.payload ? filtered[0]?.id ?? null : state.activeChapterId };
     }
 
-    // ---- Selection ----
     case 'SELECT_CHARACTER':
       return { ...state, selectedCharacterId: action.payload };
+
     case 'SELECT_LOCATION':
       return { ...state, selectedLocation: action.payload };
 
-    // ---- Analysis ----
     case 'ANALYSIS_START':
       return { ...state, isAnalyzing: true, analysisError: null };
 
     case 'ANALYSIS_SUCCESS': {
+      const response = action.payload;
       const entry: AnalysisHistoryEntry = {
         id: `hist-${Date.now()}`,
         timestamp: new Date(),
         characterId: state.selectedCharacterId,
         location: state.selectedLocation,
         chapterId: state.activeChapterId || '',
-        response: action.payload,
+        response,
       };
-      // Merge auto-discovered entities into projectSettings (from all sources)
-      const sa = action.payload?.scene_analysis;
-      const eu = action.payload?.extracted_entities?.updated_settings;
-      const discoveredChars = eu?.characters ?? sa?.characters ?? [];
-      const discoveredLocs = eu?.locations ?? sa?.locations ?? [];
-      const baseSettings = state.projectSettings || { characters: [], locations: [], power_system: {} };
-      const mergedChars = Array.from(new Set([...baseSettings.characters, ...discoveredChars]));
-      const mergedLocs = Array.from(new Set([...baseSettings.locations, ...discoveredLocs]));
-      const hasNewEntities = discoveredChars.length > 0 || discoveredLocs.length > 0;
-      const newSettings = hasNewEntities ? {
-        ...baseSettings,
-        characters: mergedChars,
-        locations: mergedLocs,
-      } : state.projectSettings;
-      // Auto-select first character if none selected and characters now exist
-      const autoSelectChar = (!state.selectedCharacterId && mergedChars.length > 0)
-        ? mergedChars[0]
-        : state.selectedCharacterId;
+      // Merge discovered entities into project settings
+      const merged = mergeDiscoveredEntities(state, response);
+      // Auto-select first character if none selected
+      const autoChar = (!state.selectedCharacterId && merged.chars.length > 0)
+        ? merged.chars[0] : state.selectedCharacterId;
       return {
         ...state,
         isAnalyzing: false,
-        currentAnalysis: action.payload,
+        currentAnalysis: response,
         analysisHistory: [entry, ...state.analysisHistory],
         analysisError: null,
-        projectSettings: newSettings,
-        selectedCharacterId: autoSelectChar,
-        costData: {
-          ...state.costData,
-          currentMonth: state.costData.currentMonth + 0.01,
-          breakdown: [...state.costData.breakdown, { category: '章节分析 (Tier 1)', cost: 0.01 }],
-        },
+        projectSettings: merged.settings,
+        selectedCharacterId: autoChar,
       };
     }
 
     case 'ANALYSIS_FAILURE':
       return { ...state, isAnalyzing: false, analysisError: action.payload };
 
-    // ---- Analysis history persistence (Item 4) ----
     case 'LOAD_ANALYSIS_HISTORY': {
-      // Convert server records to AnalysisHistoryEntry format
       const entries: AnalysisHistoryEntry[] = action.payload.map(r => ({
-        id: r.analysis_id,
-        timestamp: new Date(r.timestamp),
-        characterId: r.character_id,
-        location: r.location,
-        chapterId: r.chapter_id,
-        response: r.response_summary as unknown as OrchestratorResponse,
+        id: r.analysis_id, timestamp: new Date(r.timestamp),
+        characterId: r.character_id, location: r.location,
+        chapterId: '', response: r.response_summary as unknown as OrchestratorResponse,
       }));
-      // Merge with existing in-memory entries (deduplicate by id)
       const existingIds = new Set(state.analysisHistory.map(e => e.id));
-      const newEntries = entries.filter(e => !existingIds.has(e.id));
-      return {
-        ...state,
-        analysisHistory: [...newEntries, ...state.analysisHistory],
-      };
+      return { ...state, analysisHistory: [...entries.filter(e => !existingIds.has(e.id)), ...state.analysisHistory] };
     }
 
-    // ---- UI ----
+    case 'SELECT_COMPARE_SLOT': {
+      const entry = state.analysisHistory.find(e => e.id === action.payload.entryId) || null;
+      return action.payload.slot === 'A'
+        ? { ...state, compareSlotA: entry, activeRightTab: 'compare' }
+        : { ...state, compareSlotB: entry, activeRightTab: 'compare' };
+    }
+
+    case 'CLEAR_COMPARE':
+      return { ...state, compareSlotA: null, compareSlotB: null };
+
     case 'SELECT_TAB':
       return { ...state, activeRightTab: action.payload };
 
     case 'SELECT_HISTORY_ENTRY': {
       const entry = state.analysisHistory.find(e => e.id === action.payload);
-      if (!entry) return state;
-      return { ...state, currentAnalysis: entry.response, activeRightTab: 'analysis' };
+      return entry ? { ...state, currentAnalysis: entry.response, activeRightTab: 'analysis' } : state;
     }
-
-    // ---- Comparison (Item 3) ----
-    case 'SELECT_COMPARE_SLOT': {
-      const entry = state.analysisHistory.find(e => e.id === action.payload.entryId) || null;
-      if (action.payload.slot === 'A') {
-        return { ...state, compareSlotA: entry, activeRightTab: 'compare' };
-      }
-      return { ...state, compareSlotB: entry, activeRightTab: 'compare' };
-    }
-    case 'CLEAR_COMPARE':
-      return { ...state, compareSlotA: null, compareSlotB: null };
 
     case 'TOGGLE_LEFT_PANEL':
       return { ...state, leftPanelOpen: !state.leftPanelOpen };
+
     case 'TOGGLE_RIGHT_PANEL':
       return { ...state, rightPanelOpen: !state.rightPanelOpen };
+
     case 'SET_API_STATUS':
       return { ...state, apiConnected: action.payload };
 
@@ -245,44 +208,28 @@ function reducer(state: AppState, action: AppAction): AppState {
 // Context
 // =========================================================================
 
-interface AppContextValue {
-  state: AppState;
-  dispatch: React.Dispatch<AppAction>;
-}
-
+interface AppContextValue { state: AppState; dispatch: React.Dispatch<AppAction>; }
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Load projects on mount
   useEffect(() => {
-    apiClient.listProjects().then(projects => {
-      dispatch({ type: 'SET_PROJECTS', payload: projects });
-    }).catch(() => {});
+    apiClient.listProjects().then(p => dispatch({ type: 'SET_PROJECTS', payload: p })).catch(() => {});
   }, []);
 
-  // Check API health
   useEffect(() => {
     let cancelled = false;
     async function check() {
-      try {
-        await apiClient.checkHealth();
-        if (!cancelled) dispatch({ type: 'SET_API_STATUS', payload: true });
-      } catch {
-        if (!cancelled) dispatch({ type: 'SET_API_STATUS', payload: false });
-      }
+      try { await apiClient.checkHealth(); if (!cancelled) dispatch({ type: 'SET_API_STATUS', payload: true }); }
+      catch { if (!cancelled) dispatch({ type: 'SET_API_STATUS', payload: false }); }
     }
     check();
     const interval = setInterval(check, 30000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
-  return (
-    <AppContext.Provider value={{ state, dispatch }}>
-      {children}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>;
 }
 
 export function useAppContext(): AppContextValue {
@@ -292,13 +239,11 @@ export function useAppContext(): AppContextValue {
 }
 
 // =========================================================================
-// Composite actions (async, multi-step)
+// Composite actions
 // =========================================================================
 
 export function useAppActions() {
   const { state, dispatch } = useAppContext();
-
-  // --- Project actions ---
 
   const createProject = useCallback(async (name: string) => {
     const proj = await apiClient.createProject(name);
@@ -311,33 +256,28 @@ export function useAppActions() {
     try {
       const settings = await apiClient.getProjectSettings(projectId);
       dispatch({ type: 'SET_PROJECT_SETTINGS', payload: settings });
-    } catch { /* use defaults */ }
+    } catch { /* defaults */ }
     try {
       const chapters = await apiClient.listChapters(projectId);
       dispatch({ type: 'SET_CHAPTERS', payload: chapters });
       if (chapters.length > 0) {
         dispatch({ type: 'SELECT_CHAPTER', payload: chapters[0].id });
-        // Load analysis history for first chapter (Item 4)
-        apiClient.getAnalysisHistory(projectId, chapters[0].id).then(records => {
-          dispatch({ type: 'LOAD_ANALYSIS_HISTORY', payload: records });
+        apiClient.getAnalysisHistory(projectId, chapters[0].id).then(r => {
+          dispatch({ type: 'LOAD_ANALYSIS_HISTORY', payload: r });
         }).catch(() => {});
       }
-    } catch { /* no chapters yet */ }
+    } catch { /* no chapters */ }
   }, [dispatch]);
 
-  const deleteProject = useCallback(async (projectId: string) => {
-    await apiClient.deleteProject(projectId);
-    dispatch({ type: 'REMOVE_PROJECT', payload: projectId });
+  const deleteProject = useCallback(async (id: string) => {
+    await apiClient.deleteProject(id);
+    dispatch({ type: 'REMOVE_PROJECT', payload: id });
   }, [dispatch]);
 
   const returnToDashboard = useCallback(() => {
-    apiClient.listProjects().then(projects => {
-      dispatch({ type: 'SET_PROJECTS', payload: projects });
-    }).catch(() => {});
+    apiClient.listProjects().then(p => dispatch({ type: 'SET_PROJECTS', payload: p })).catch(() => {});
     dispatch({ type: 'RETURN_TO_DASHBOARD' });
   }, [dispatch]);
-
-  // --- Settings ---
 
   const saveSettings = useCallback(async (settings: ProjectSettings) => {
     if (!state.activeProjectId) return;
@@ -345,99 +285,74 @@ export function useAppActions() {
     dispatch({ type: 'SET_PROJECT_SETTINGS', payload: settings });
   }, [state.activeProjectId, dispatch]);
 
-  // --- Chapter actions ---
-
   const addChapter = useCallback(async (title?: string) => {
     if (!state.activeProjectId) return;
     const ch = await apiClient.createChapter(state.activeProjectId, title || '新章节');
     dispatch({ type: 'ADD_CHAPTER', payload: ch });
   }, [state.activeProjectId, dispatch]);
 
-  const saveChapter = useCallback(async (chapterId: string, title: string, text: string) => {
+  const saveChapter = useCallback(async (id: string, title: string, text: string) => {
     if (!state.activeProjectId) return;
-    await apiClient.saveChapter(state.activeProjectId, chapterId, title, text);
+    await apiClient.saveChapter(state.activeProjectId, id, title, text);
   }, [state.activeProjectId]);
 
-  const deleteChapter = useCallback(async (chapterId: string) => {
+  const deleteChapter = useCallback(async (id: string) => {
     if (!state.activeProjectId) return;
-    await apiClient.deleteChapter(state.activeProjectId, chapterId);
-    dispatch({ type: 'DELETE_CHAPTER', payload: chapterId });
+    await apiClient.deleteChapter(state.activeProjectId, id);
+    dispatch({ type: 'DELETE_CHAPTER', payload: id });
   }, [state.activeProjectId, dispatch]);
-
-  // --- Analysis ---
 
   const runAnalysis = useCallback(async () => {
     const chapter = state.chapters.find(ch => ch.id === state.activeChapterId);
     if (!chapter || !chapter.text.trim()) return;
-
     dispatch({ type: 'ANALYSIS_START' });
     try {
-      const payload: Record<string, unknown> = {
-        character_id: state.selectedCharacterId,
-        scene_text: chapter.text,
-        event_description: chapter.text.slice(0, 1500),
-        location: state.selectedLocation,
-        involved_characters: state.selectedCharacterId ? [state.selectedCharacterId] : [],
-      };
       const result = await apiClient.executeOrchestrator({
         type: 'analyze',
-        payload,
+        payload: {
+          character_id: state.selectedCharacterId,
+          scene_text: chapter.text,
+          event_description: chapter.text.slice(0, 1500),
+          location: state.selectedLocation,
+          involved_characters: state.selectedCharacterId ? [state.selectedCharacterId] : [],
+        },
         project_id: state.activeProjectId || undefined,
       });
       dispatch({ type: 'ANALYSIS_SUCCESS', payload: result });
-      // Fire-and-forget: persist to server (Item 4)
+      // Persist to server (fire-and-forget)
       if (state.activeProjectId && state.activeChapterId) {
         apiClient.saveAnalysis(state.activeProjectId, state.activeChapterId, {
           character_id: state.selectedCharacterId,
           location: state.selectedLocation,
           response: result,
-        }).catch(() => { /* persistence failure is non-blocking */ });
+        }).catch(() => {});
       }
     } catch (err) {
       dispatch({ type: 'ANALYSIS_FAILURE', payload: err instanceof Error ? err.message : '分析请求失败' });
     }
   }, [state.chapters, state.activeChapterId, state.selectedCharacterId, state.selectedLocation, state.activeProjectId, dispatch]);
 
-  // --- Simple dispatches ---
   const selectChapter = useCallback((id: string) => {
     dispatch({ type: 'SELECT_CHAPTER', payload: id });
-    // Load analysis history for newly selected chapter (Item 4)
     if (state.activeProjectId) {
-      apiClient.getAnalysisHistory(state.activeProjectId, id).then(records => {
-        dispatch({ type: 'LOAD_ANALYSIS_HISTORY', payload: records });
+      apiClient.getAnalysisHistory(state.activeProjectId, id).then(r => {
+        dispatch({ type: 'LOAD_ANALYSIS_HISTORY', payload: r });
       }).catch(() => {});
     }
   }, [state.activeProjectId, dispatch]);
-  const updateChapterTitle = useCallback((id: string, title: string) => dispatch({ type: 'UPDATE_CHAPTER_TITLE', payload: { id, title } }), [dispatch]);
-  const updateChapterText = useCallback((id: string, text: string) => dispatch({ type: 'UPDATE_CHAPTER_TEXT', payload: { id, text } }), [dispatch]);
-  const selectCharacter = useCallback((id: string) => dispatch({ type: 'SELECT_CHARACTER', payload: id }), [dispatch]);
-  const selectLocation = useCallback((loc: string) => dispatch({ type: 'SELECT_LOCATION', payload: loc }), [dispatch]);
-  const selectTab = useCallback((tab: AppState['activeRightTab']) => dispatch({ type: 'SELECT_TAB', payload: tab }), [dispatch]);
-  const selectHistoryEntry = useCallback((id: string) => dispatch({ type: 'SELECT_HISTORY_ENTRY', payload: id }), [dispatch]);
-  const toggleLeftPanel = useCallback(() => dispatch({ type: 'TOGGLE_LEFT_PANEL' }), [dispatch]);
-  const toggleRightPanel = useCallback(() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' }), [dispatch]);
-  const toggleProjectSettings = useCallback(() => dispatch({ type: 'TOGGLE_PROJECT_SETTINGS' }), [dispatch]);
 
   return {
     state,
-    createProject,
-    enterProject,
-    deleteProject,
-    returnToDashboard,
-    saveSettings,
-    addChapter,
-    saveChapter,
-    deleteChapter,
-    runAnalysis,
-    selectChapter,
-    updateChapterTitle,
-    updateChapterText,
-    selectCharacter,
-    selectLocation,
-    selectTab,
-    selectHistoryEntry,
-    toggleLeftPanel,
-    toggleRightPanel,
-    toggleProjectSettings,
+    createProject, enterProject, deleteProject, returnToDashboard,
+    saveSettings, addChapter, saveChapter, deleteChapter, runAnalysis, selectChapter,
+    updateChapterTitle: (id: string, title: string) => dispatch({ type: 'UPDATE_CHAPTER_TITLE', payload: { id, title } }),
+    updateChapterText: (id: string, text: string) => dispatch({ type: 'UPDATE_CHAPTER_TEXT', payload: { id, text } }),
+    selectCharacter: (id: string) => dispatch({ type: 'SELECT_CHARACTER', payload: id }),
+    selectLocation: (loc: string) => dispatch({ type: 'SELECT_LOCATION', payload: loc }),
+    selectTab: (tab: RightTab) => dispatch({ type: 'SELECT_TAB', payload: tab }),
+    selectHistoryEntry: (id: string) => dispatch({ type: 'SELECT_HISTORY_ENTRY', payload: id }),
+    toggleLeftPanel: () => dispatch({ type: 'TOGGLE_LEFT_PANEL' }),
+    toggleRightPanel: () => dispatch({ type: 'TOGGLE_RIGHT_PANEL' }),
+    toggleProjectSettings: () => dispatch({ type: 'TOGGLE_PROJECT_SETTINGS' }),
   };
 }
