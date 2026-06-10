@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Node / React
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Test artifacts
+test.txt
+test_error.txt
+test_output.txt
+*.tmp
+
+# Environment / secrets
+.env
+.env.local
+config/llm.json
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Session files
+.claude/settings.local.json
+
+# Local backup (copyrighted corpus moved out of repo)
+corpus_bak/
+
+# Runtime data (user-specific)
+config/cost-log.json
+projects/

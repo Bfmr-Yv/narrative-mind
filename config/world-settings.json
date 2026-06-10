@@ -1,0 +1,55 @@
+{
+  "power_system": {
+    "name": "通用力量体系",
+    "levels": [
+      {
+        "name": "普通人",
+        "capabilities": ["基础体能", "日常技能"]
+      },
+      {
+        "name": "修行者",
+        "capabilities": ["特殊能力", "增强体能"]
+      },
+      {
+        "name": "强者",
+        "capabilities": ["强大能力", "领域控制"]
+      }
+    ],
+    "rules": [
+      {
+        "id": "R001",
+        "desc": "低境界无法感知高境界气息",
+        "condition": "observer_level < target_level - 1",
+        "effect": "感知失败"
+      },
+      {
+        "id": "R002",
+        "desc": "跨境界战斗需要特殊条件",
+        "condition": "attacker_level < defender_level - 2",
+        "effect": "需要特殊道具或阵法辅助"
+      }
+    ]
+  },
+  "spatial_rules": [
+    {
+      "id": "S001",
+      "desc": "泥瓶巷是小镇的僻静地方",
+      "location": "泥瓶巷",
+      "constraint": "只能步行进入"
+    },
+    {
+      "id": "S002",
+      "desc": "大观园是贾府的花园",
+      "location": "大观园",
+      "constraint": "需要通报才能进入"
+    }
+  ],
+  "locations": [
+    "泥瓶巷",
+    "大观园",
+    "荣国府",
+    "宁国府",
+    "卡塞尔学院",
+    "芝加哥"
+  ]
+}

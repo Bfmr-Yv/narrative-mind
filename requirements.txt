@@ -1,0 +1,13 @@
+# Narrative Mind v3.1 — Python Dependencies
+# Phase 1: 核心引擎仅用标准库，Web 层允许 Flask
+# Phase 1 M6: LLM 集成层允许 openai SDK
+
+# Web API 服务器
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# LLM API 客户端（OpenAI 兼容接口：DeepSeek / Moonshot 等）
+openai>=1.0.0
+
+# 注意：以下为开发/测试依赖，不引入运行时
+# pytest>=8.0.0  # 后续正式测试框架
