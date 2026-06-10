@@ -293,3 +293,152 @@ def format_entity_extract_prompt(chapter_text: str) -> str:
     """
     text = chapter_text[:4000] if len(chapter_text) > 4000 else chapter_text
     return f"## 待分析文本\n\n{text}\n\n## 请提取上述文本中的所有角色名称和地点名称，直接输出 JSON。"
+
+
+# =========================================================================
+# Phase 2 — 叙事引擎 Prompts
+# =========================================================================
+
+FORESHADOW_DETECT_SYSTEM = """你是一个小说伏笔分析专家。你的任务是从给定的章节文本中识别出所有可能构成伏笔的元素。
+
+## 什么是伏笔
+伏笔是作者在当前章节中埋下的暗示或铺垫，可能在后续章节中产生回响。包括但不限于：
+1. **物品伏笔**：某个被特别提及、但未解释用途或来源的物品（如神秘玉佩、一封未读的信）
+2. **对话伏笔**：角色之间含有暗示、预兆、或未说明信息的对话
+3. **角色伏笔**：角色表现出的异常行为、隐藏的情绪、或未揭示的身份/关系
+4. **事件伏笔**：某个看似偶然、但可能引发连锁反应的事件
+5. **设定伏笔**：对某个地点、规则、或历史事件的提及，暗示其后续重要性
+
+## 分析原则
+1. 关注文本中被"特意提及但未充分解释"的细节
+2. 关注角色对话中的暗示和保留信息
+3. 关注叙述者语气中透露出"后面会再说"的信号
+4. 宁可多报，不可漏报（允许假阳性，不允许假阴性）
+5. 如果文本中没有明显伏笔，返回空数组
+
+## 输出格式
+严格输出以下JSON，不要任何额外文字：
+{"foreshadowings": [{"description": "伏笔内容描述（30字内）", "hint_text": "原文暗示片段（≤80字）", "category": "object|dialogue|character|event|setting", "related_characters": ["角色名"], "confidence": 0.7}]}"""
+
+
+def format_foreshadow_prompt(chapter_text: str, chapter_id: str = "") -> str:
+    """格式化伏笔检测 prompt
+
+    Args:
+        chapter_text: 章节文本（自动截取 4000 字）
+        chapter_id: 章节标识
+    """
+    text = chapter_text[:4000] if len(chapter_text) > 4000 else chapter_text
+    parts = [
+        f"章节ID：{chapter_id}" if chapter_id else "",
+        f"## 待分析文本\n\n{text}",
+        "## 请识别上述文本中的所有伏笔。直接输出 JSON。",
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+CAUSAL_EXTRACT_SYSTEM = """你是一个小说情节因果关系分析专家。你的任务是从给定章节中提取事件之间的因果链。
+
+## 什么是因果链
+因果链连接两个事件，其中前一个事件是后一个事件的直接或间接原因。例如：
+- "贾宝玉摔玉" → "林黛玉生气" （直接触发）
+- "王熙凤设局" → "尤二姐吞金" （间接导致）
+
+## 提取原则
+1. 关注因果关系，而非时间顺序（"A然后B"不一定等于"A导致B"）
+2. 因果链应该是有意义的叙事连接，而非琐碎的日常动作
+3. 强度评估：1.0 = 必然导致，0.5 = 显著影响，0.2 = 微弱相关
+4. 如果文本中没有明确的因果关系，返回空数组
+5. 最多提取 5 条最核心的因果链
+
+## 输出格式
+严格输出以下JSON，不要任何额外文字：
+{"causal_links": [{"cause": "原因事件描述（30字内）", "effect": "结果事件描述（30字内）", "strength": 0.7, "description": "因果说明（20字内）"}]}"""
+
+
+def format_causal_prompt(chapter_text: str, chapter_id: str = "") -> str:
+    """格式化因果提取 prompt
+
+    Args:
+        chapter_text: 章节文本（自动截取 4000 字）
+        chapter_id: 章节标识
+    """
+    text = chapter_text[:4000] if len(chapter_text) > 4000 else chapter_text
+    parts = [
+        f"章节ID：{chapter_id}" if chapter_id else "",
+        f"## 待分析文本\n\n{text}",
+        "## 请提取上述文本中的因果关系链。直接输出 JSON。",
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+RESOLUTION_CHECK_SYSTEM = """你是一个小说伏笔回收检测专家。你的任务是判断一个已知的伏笔是否在给定的新章节中得到了回收（呼应）。
+
+## 判断标准
+1. **已回收**：新章节中的某个情节、对话、或细节明确解释了伏笔的悬念
+2. **部分回收**：伏笔被提及或推进了一步，但核心悬念尚未完全解开
+3. **未回收**：新章节中没有与伏笔明显相关的内容
+
+## 分析要点
+- 伏笔的"回收"不一定是直白的揭晓，可以是暗示性的呼应
+- 一个伏笔可能分多次回收（第一次给出线索，第二次完全揭晓）
+- 注意伏笔的细节（物品的描述、对话的关键词）是否在新章中出现
+
+## 输出格式
+严格输出以下JSON，不要任何额外文字：
+{"resolved": true, "confidence": 0.8, "detail": "回收说明（30字内）"}"""
+
+
+def format_resolution_check_prompt(
+    foreshadowing_desc: str,
+    foreshadowing_hint: str,
+    chapter_text: str,
+) -> str:
+    """格式化伏笔回收检查 prompt
+
+    Args:
+        foreshadowing_desc: 伏笔描述
+        foreshadowing_hint: 伏笔原文片段
+        chapter_text: 新章节文本（自动截取 4000 字）
+    """
+    text = chapter_text[:4000] if len(chapter_text) > 4000 else chapter_text
+    parts = [
+        f"## 待检查的伏笔\n描述：{foreshadowing_desc}\n原文片段：{foreshadowing_hint}",
+        f"## 新章节文本\n\n{text}",
+        "## 该伏笔是否在本章中得到回收？直接输出 JSON。",
+    ]
+    return "\n\n".join(parts)
+
+
+EVENT_PREDICT_SYSTEM = """你是一个小说情节推演专家。基于当前章节的事件和因果链，推演接下来可能发生的短期情节发展。
+
+## 推演原则
+1. 基于已有因果链进行逻辑推演，不要凭空创造新的设定
+2. 推演要具体，包含"谁可能会做什么"以及"可能导致什么"
+3. 考虑多条可能的发展线（2-3条），每条简短说明
+4. 推演范围限于接下来1-3个场景，不需要长篇展望
+5. 使用直接的陈述语气，不需要文学性描写
+
+## 输出格式
+严格输出以下JSON，不要任何额外文字：
+{"prediction": "情节推演文本（150-250字）", "possible_branches": ["分支1简述", "分支2简述"], "confidence": 0.6}"""
+
+
+def format_event_predict_prompt(
+    chapter_text: str,
+    causal_summary: str = "",
+) -> str:
+    """格式化情节推演 prompt
+
+    Args:
+        chapter_text: 章节文本（自动截取 4000 字）
+        causal_summary: 因果链摘要
+    """
+    text = chapter_text[:4000] if len(chapter_text) > 4000 else chapter_text
+    parts = [
+        f"## 当前章节\n\n{text}",
+    ]
+    if causal_summary:
+        parts.append(f"## 已提取的因果链\n\n{causal_summary}")
+    parts.append("## 请基于以上内容推演短期情节发展。直接输出 JSON。")
+    return "\n\n".join(parts)

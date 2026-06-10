@@ -208,6 +208,24 @@
 
 ---
 
+---
+### ADR-016: Phase 2 叙事引擎架构
+
+- **日期**：2026-06-10
+- **决策**：叙事引擎作为 Phase 2 首个新增引擎，提供伏笔追踪、因果链构建和叙事问题检测三大能力。采用与 Phase 1 引擎相同的架构模式：LLM 优先 + 关键词 fallback，不直接写记忆，由编排器统一调度。
+- **架构要点**：
+  1. 伏笔有完整生命周期（planted → partial → resolved），由引擎内部注册表管理
+  2. 因果链提取基于事件间逻辑关系，非简单时间顺序
+  3. 跨章节伏笔回收检查支持 LLM 语义判断和关键词 fallback 两种模式
+  4. 叙事问题检测覆盖四类：因果循环、长期遗忘、因果断层、类型重复
+  5. 新增 4 个 LLM 任务类型（foreshadow_detect / causal_extract / resolution_check / event_predict）
+  6. 编排器新增 "narrative" 和 "full_analyze" 两种路由动作
+- **理由**：伏笔管理是长篇网文创作的核心痛点，因果链是叙事逻辑的基础设施。Phase 1 的角色引擎和世界引擎解决了"谁做了什么"和"是否符合规则"，叙事引擎解决"为什么发生"和"之前暗示了什么"。
+- **后果**：新增 `src/engines/narrative.py`（~370 行），新增 4 个 LLM system prompt，Tier 成本表新增 4 个任务类型（单次调用成本 ~$0.001），一致性守卫维度扩展至 foreshadowing / causal / narrative_consistency
+- **状态**：✅ 已冻结
+
+---
+
 ## 决策变更流程
 
 想修改已冻结的决策？

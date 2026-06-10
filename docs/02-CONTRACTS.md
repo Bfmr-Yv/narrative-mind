@@ -354,6 +354,39 @@ class ConceptionResponse:
 
 ---
 
+## 叙事引擎 (Narrative Engine) `[Phase 2]`
+
+**职责**：追踪伏笔、构建因果链、检测未回收伏笔和叙事矛盾。
+
+**输入**：
+```python
+@dataclass
+class NarrativeQuery:
+    chapter_text: str            # 当前章节文本（≤4000 字）
+    chapter_id: str              # 当前章节标识
+    previous_chapters: list[dict]  # 前文章节摘要 [{chapter_id, summary, key_events}, ...]
+    known_foreshadowings: list[Foreshadowing]  # 已知未回收伏笔（来自工作记忆）
+```
+
+**输出**：
+```python
+@dataclass
+class NarrativeResponse:
+    foreshadowings: list[Foreshadowing]        # 检测到的伏笔（含新增+已回收）
+    causal_links: list[CausalLink]             # 事件因果关系链
+    unresolved_foreshadowings: list[Foreshadowing]  # 仍未回收的伏笔
+    narrative_issues: list[str]                # 叙事问题（矛盾/遗忘/断层/重复）
+    event_prediction: str                      # 基于因果链的短期情节推演
+    confidence: float                          # 整体置信度 0-1
+    needs_human_review: bool                   # 置信度 < 0.5 时为 True
+```
+
+**依赖**：LLM 客户端（伏笔检测 + 因果抽取 + 情节推演）、工作记忆（前文章节摘要 + 已知伏笔列表）
+
+**契约**：不直接修改记忆，只返回建议；伏笔生命周期管理（planted → partial → resolved）；因果链仅提取不评判
+
+---
+
 ## 全局记忆系统 (Memory System) `[Phase 1 简化版]`
 
 ### 三层模型

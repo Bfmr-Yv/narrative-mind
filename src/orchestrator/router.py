@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from ..engines.character import CharacterEngine, CharacterQuery
 from ..engines.world import WorldEngine, WorldQuery
+from ..engines.narrative import NarrativeEngine, NarrativeQuery
 from ..consistency_guardian.guardian import (
     ConsistencyGuardian,
     GuardianInput,
@@ -63,6 +64,8 @@ ROUTE_MAP = {
     "check": ["world_engine"],
     "predict": ["character_engine"],
     "finalize": ["character_engine", "world_engine"],
+    "narrative": ["narrative_engine"],  # Phase 2
+    "full_analyze": ["character_engine", "world_engine", "narrative_engine"],  # Phase 2
 }
 
 
@@ -81,6 +84,7 @@ class Orchestrator:
         self,
         character_engine: Optional[CharacterEngine] = None,
         world_engine: Optional[WorldEngine] = None,
+        narrative_engine: Optional[NarrativeEngine] = None,
         guardian: Optional[ConsistencyGuardian] = None,
         enricher: Optional[object] = None,
         retriever: Optional[object] = None,
@@ -91,6 +95,7 @@ class Orchestrator:
         Args:
             character_engine: 角色引擎实例
             world_engine: 世界引擎实例
+            narrative_engine: 叙事引擎实例（Phase 2）
             guardian: 一致性守卫实例
             enricher: 语料自扩充器（可选，用于触发扩充回路）
             retriever: 语料检索器（可选，用于重建动态索引）
@@ -98,6 +103,7 @@ class Orchestrator:
         """
         self._character_engine = character_engine
         self._world_engine = world_engine
+        self._narrative_engine = narrative_engine
         self._guardian = guardian or ConsistencyGuardian()
         self._enricher = enricher
         self._retriever = retriever
@@ -191,6 +197,10 @@ class Orchestrator:
                     result = self._execute_world_engine(action)
                     results["world_engine"] = result
 
+                elif engine_name == "narrative_engine" and self._narrative_engine:
+                    result = self._execute_narrative_engine(action)
+                    results["narrative_engine"] = result
+
             except Exception as e:
                 # 降级策略：记录错误，继续执行
                 results[engine_name] = {"error": str(e)}
@@ -242,6 +252,30 @@ class Orchestrator:
 
         return self._world_engine.validate(query)
 
+    def _execute_narrative_engine(self, action: UserAction) -> Any:
+        """执行叙事引擎（Phase 2）
+
+        Args:
+            action: 用户操作
+
+        Returns:
+            叙事引擎结果
+        """
+        if not self._narrative_engine:
+            return None
+
+        payload = action.payload
+
+        # 构建查询
+        query = NarrativeQuery(
+            chapter_text=payload.get("chapter_text", ""),
+            chapter_id=payload.get("chapter_id", ""),
+            previous_chapters=payload.get("previous_chapters", []),
+            known_foreshadowings=payload.get("known_foreshadowings", []),
+        )
+
+        return self._narrative_engine.analyze(query)
+
     def _run_guardian(self, engine_results: dict[str, Any]) -> GuardianOutput:
         """运行一致性守卫
 
@@ -251,9 +285,14 @@ class Orchestrator:
         Returns:
             GuardianOutput: 守卫输出
         """
+        # Phase 2: 如果叙事引擎有结果，加入叙事维度
+        dimensions = ["character", "world_rule", "spatial"]
+        if "narrative_engine" in engine_results:
+            dimensions.extend(["foreshadowing", "causal", "narrative_consistency"])
+
         input_data = GuardianInput(
             engine_results=engine_results,
-            active_dimensions=["character", "world_rule", "spatial"],
+            active_dimensions=dimensions,
         )
 
         return self._guardian.check(input_data)
