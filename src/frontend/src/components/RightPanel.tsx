@@ -119,6 +119,7 @@ const TabAnalysis: React.FC = () => {
             <span className={`section-badge char-label ${!state.selectedCharacterId ? 'no-char' : ''}`}>
               {state.selectedCharacterId || '未指定角色'}
             </span>
+            {state.padLoading && <span className="section-badge">⏳ 更新中...</span>}
           </h4>
           <div className="pad-chart">
             <PADBar label="愉悦度 P" value={cr.pad_state.pleasure} />

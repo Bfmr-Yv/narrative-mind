@@ -145,6 +145,8 @@ export interface AppState {
   currentAnalysis: OrchestratorResponse | null;
   analysisHistory: AnalysisHistoryEntry[];
   isAnalyzing: boolean;
+  padLoading: boolean;
+  padCharacterId: string;
   analysisError: string | null;
   activeRightTab: RightTab;
   compareSlotA: AnalysisHistoryEntry | null;
@@ -179,6 +181,8 @@ export type AppAction =
   | { type: 'ANALYSIS_START' }
   | { type: 'ANALYSIS_SUCCESS'; payload: OrchestratorResponse }
   | { type: 'ANALYSIS_FAILURE'; payload: string }
+  | { type: 'UPDATE_CHARACTER_PAD'; payload: CharacterAnalysis }
+  | { type: 'PAD_LOADING' }
   | { type: 'LOAD_ANALYSIS_HISTORY'; payload: AnalysisRecord[] }
   | { type: 'SELECT_COMPARE_SLOT'; payload: { slot: 'A' | 'B'; entryId: string } }
   | { type: 'CLEAR_COMPARE' }

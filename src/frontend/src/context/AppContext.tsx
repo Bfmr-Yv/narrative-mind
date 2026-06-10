@@ -21,6 +21,8 @@ const initialState: AppState = {
   currentAnalysis: null,
   analysisHistory: [],
   isAnalyzing: false,
+  padLoading: false,
+  padCharacterId: '',
   analysisError: null,
   activeRightTab: 'analysis',
   compareSlotA: null,
@@ -151,6 +153,7 @@ function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         isAnalyzing: false,
+        padCharacterId: state.selectedCharacterId,
         currentAnalysis: response,
         analysisHistory: [entry, ...state.analysisHistory],
         analysisError: null,
@@ -161,6 +164,26 @@ function reducer(state: AppState, action: AppAction): AppState {
 
     case 'ANALYSIS_FAILURE':
       return { ...state, isAnalyzing: false, analysisError: action.payload };
+
+    case 'PAD_LOADING':
+      return { ...state, padLoading: true };
+
+    case 'UPDATE_CHARACTER_PAD': {
+      if (!state.currentAnalysis) return state;
+      const cr = action.payload;
+      return {
+        ...state,
+        padLoading: false,
+        padCharacterId: state.selectedCharacterId,
+        currentAnalysis: {
+          ...state.currentAnalysis,
+          engine_results: {
+            ...state.currentAnalysis.engine_results,
+            character_engine: cr,
+          },
+        },
+      };
+    }
 
     case 'LOAD_ANALYSIS_HISTORY': {
       const entries: AnalysisHistoryEntry[] = action.payload.map(r => ({
@@ -347,7 +370,24 @@ export function useAppActions() {
     saveSettings, addChapter, saveChapter, deleteChapter, runAnalysis, selectChapter,
     updateChapterTitle: (id: string, title: string) => dispatch({ type: 'UPDATE_CHAPTER_TITLE', payload: { id, title } }),
     updateChapterText: (id: string, text: string) => dispatch({ type: 'UPDATE_CHAPTER_TEXT', payload: { id, text } }),
-    selectCharacter: (id: string) => dispatch({ type: 'SELECT_CHARACTER', payload: id }),
+    selectCharacter: async (charId: string) => {
+      dispatch({ type: 'SELECT_CHARACTER', payload: charId });
+      // Auto-refetch PAD for the newly selected character
+      const chapter = state.chapters.find(ch => ch.id === state.activeChapterId);
+      if (charId && chapter?.text && state.currentAnalysis) {
+        dispatch({ type: 'PAD_LOADING' });
+        try {
+          const cr = await apiClient.analyzeCharacter({
+            character_id: charId,
+            scene_text: chapter.text,
+          });
+          dispatch({ type: 'UPDATE_CHARACTER_PAD', payload: cr });
+        } catch {
+          // PAD re-fetch failed — keep showing old PAD
+          dispatch({ type: 'UPDATE_CHARACTER_PAD', payload: state.currentAnalysis.engine_results.character_engine! });
+        }
+      }
+    },
     selectLocation: (loc: string) => dispatch({ type: 'SELECT_LOCATION', payload: loc }),
     selectTab: (tab: RightTab) => dispatch({ type: 'SELECT_TAB', payload: tab }),
     selectHistoryEntry: (id: string) => dispatch({ type: 'SELECT_HISTORY_ENTRY', payload: id }),

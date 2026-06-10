@@ -6,7 +6,7 @@ const AUTOSAVE_DELAY = 2000; // 2 秒无输入后自动保存
 
 const CenterPanel: React.FC = () => {
   const { state, dispatch } = useAppContext();
-  const { saveChapter, runAnalysis } = useAppActions();
+  const { saveChapter, runAnalysis, selectCharacter } = useAppActions();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -130,7 +130,7 @@ const CenterPanel: React.FC = () => {
         <select
           className="toolbar-select"
           value={state.selectedCharacterId}
-          onChange={e => dispatch({ type: 'SELECT_CHARACTER', payload: e.target.value })}
+          onChange={e => selectCharacter(e.target.value)}
           title="分析目标角色"
         >
           {chars.map(name => (
