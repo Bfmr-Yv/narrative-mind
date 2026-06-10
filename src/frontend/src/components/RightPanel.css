@@ -146,6 +146,10 @@
 .entity-tag { font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 12px; font-weight: 500; }
 .entity-tag.created { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
 .entity-tag.existing { background: var(--light-bg); color: var(--light-text-secondary); }
+.entity-tag.clickable { cursor: pointer; transition: all 0.15s; }
+.entity-tag.clickable:hover { filter: brightness(0.92); transform: translateY(-1px); }
+.entity-tag.clickable.active { box-shadow: 0 0 0 2px var(--primary); }
+.hero-back-hint { font-size: 0.7rem; font-weight: 400; color: var(--primary); margin-left: 0.5rem; opacity: 0.8; }
 .auto-badge { background: #c8e6c9 !important; color: #2e7d32 !important; }
 
 /* No character hint */

@@ -20,6 +20,8 @@ export interface SceneAnalysis {
   characters: string[];
   locations: string[];
   event_prediction: string;
+  character_intros: Record<string, string>;
+  location_intros: Record<string, string>;
   character_pads: Record<string, CharacterPad>;
 }
 

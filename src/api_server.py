@@ -448,9 +448,11 @@ def _run_scene_analysis(
     extracted_chars = result.get('characters', []) if isinstance(result, dict) else []
     extracted_locs = result.get('locations', []) if isinstance(result, dict) else []
     event_prediction = result.get('event_prediction', '') if isinstance(result, dict) else ''
+    character_intros = result.get('character_intros', {}) if isinstance(result, dict) else {}
+    location_intros = result.get('location_intros', {}) if isinstance(result, dict) else {}
 
     print(f"[SceneAnalysis] chars={extracted_chars}, locs={extracted_locs}, "
-          f"prediction_len={len(event_prediction)}")
+          f"intros={len(character_intros)}, prediction_len={len(event_prediction)}")
 
     # 2. 获取项目当前设定
     settings = project_manager.get_settings(project_id)
@@ -523,6 +525,8 @@ def _run_scene_analysis(
             'characters': extracted_chars,
             'locations': extracted_locs,
             'event_prediction': event_prediction,
+            'character_intros': character_intros,
+            'location_intros': location_intros,
             'character_pads': character_pads,
         },
         'entities': {

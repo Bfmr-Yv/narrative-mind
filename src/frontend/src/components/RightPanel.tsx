@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import type { Conflict, RightTab } from '../types';
 import TabCompare from './TabCompare';
@@ -45,6 +45,8 @@ const ConflictCard: React.FC<{ conflict: Conflict }> = ({ conflict }) => {
 const TabAnalysis: React.FC = () => {
   const { state } = useAppContext();
   const a = state.currentAnalysis;
+  const [infoView, setInfoView] = useState<{ type: 'prediction' } | { type: 'character'; name: string } | { type: 'location'; name: string }>({ type: 'prediction' });
+
   if (!a) return (
     <div className="empty-state">
       <div className="empty-icon">&#x1f50d;</div>
@@ -62,14 +64,30 @@ const TabAnalysis: React.FC = () => {
   const createdChars = entities?.characters?.created ?? [];
   const createdLocs = entities?.locations?.created ?? [];
 
+  // Hero card content: toggle between prediction / character intro / location intro
+  const heroTitle = infoView.type === 'prediction' ? '📖 事件推演'
+    : infoView.type === 'character' ? `👤 ${infoView.name}`
+    : `📍 ${infoView.name}`;
+  const heroContent = infoView.type === 'prediction' ? sa?.event_prediction
+    : infoView.type === 'character' ? (sa?.character_intros?.[infoView.name] || '暂无该角色简介')
+    : (sa?.location_intros?.[infoView.name] || '暂无该地点简介');
+
   return (
     <div className="tab-analysis">
 
-      {/* 1. Event prediction (hero) */}
-      {sa?.event_prediction && (
+      {/* 1. Hero card — toggles between prediction / char intro / loc intro */}
+      {heroContent && (
         <div className="prediction-hero">
-          <div className="prediction-hero-label">📖 事件推演</div>
-          <div className="prediction-text">{sa.event_prediction}</div>
+          <div
+            className="prediction-hero-label"
+            onClick={() => setInfoView({ type: 'prediction' })}
+            style={{ cursor: 'pointer' }}
+            title="点击返回事件推演"
+          >
+            {heroTitle}
+            {infoView.type !== 'prediction' && <span className="hero-back-hint"> ← 返回推演</span>}
+          </div>
+          <div className="prediction-text">{heroContent}</div>
         </div>
       )}
 
@@ -92,7 +110,12 @@ const TabAnalysis: React.FC = () => {
             <span className="entity-label">角色</span>
             <div className="entity-tags">
               {(sa.characters || []).map(c => (
-                <span key={c} className={`entity-tag ${createdChars.includes(c) ? 'created' : 'existing'}`}>
+                <span
+                  key={c}
+                  className={`entity-tag clickable ${createdChars.includes(c) ? 'created' : 'existing'} ${infoView.type === 'character' && infoView.name === c ? 'active' : ''}`}
+                  onClick={() => setInfoView({ type: 'character', name: c })}
+                  title="点击查看角色简介"
+                >
                   {c}{createdChars.includes(c) ? ' ✨' : ''}
                 </span>
               ))}
@@ -102,7 +125,12 @@ const TabAnalysis: React.FC = () => {
             <span className="entity-label">地点</span>
             <div className="entity-tags">
               {(sa.locations || []).map(l => (
-                <span key={l} className={`entity-tag ${createdLocs.includes(l) ? 'created' : 'existing'}`}>
+                <span
+                  key={l}
+                  className={`entity-tag clickable ${createdLocs.includes(l) ? 'created' : 'existing'} ${infoView.type === 'location' && infoView.name === l ? 'active' : ''}`}
+                  onClick={() => setInfoView({ type: 'location', name: l })}
+                  title="点击查看地点简介"
+                >
                   {l}{createdLocs.includes(l) ? ' ✨' : ''}
                 </span>
               ))}
