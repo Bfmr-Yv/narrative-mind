@@ -48,6 +48,11 @@ dist/
 build/
 *.spec
 
+# Claude / AI agent workspace (not part of the project)
+.claude/
+CLAUDE.md
+CODING-STANDARDS.md
+
 # Session files
 .claude/settings.local.json
 
