@@ -42,6 +42,7 @@ ESTIMATED_COST_PER_CALL = {
     "rule_check":     0.00039,   # ~400 in + ~150 out
     "spatial_check":  0.00027,   # ~300 in + ~100 out
     "rerank":         0.00104,   # ~1500 in + ~200 out
+    "entity_extract": 0.00066,   # ~800 in + ~200 out (Item 2)
 }
 
 # API 超时（留 5s 给编排器的 30s fallback）
@@ -91,6 +92,7 @@ TIER_CONFIG: dict[str, TierRoute] = {
     "rule_check":     TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.2),
     "spatial_check":  TierRoute(model=DEFAULT_MODEL, max_tokens=256,  temperature=0.2),
     "rerank":         TierRoute(model=DEFAULT_MODEL, max_tokens=256,  temperature=0.1),
+    "entity_extract": TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.1),
 }
 
 # Tier 2+ 任务（预算紧张时优先保留，Tier 1 类任务先降级）

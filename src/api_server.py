@@ -297,7 +297,7 @@ def suggest_entities(project_id: str):
         if chapter_id:
             chapter = project_manager.get_chapter(project_id, chapter_id)
             if chapter:
-                chapter_text = chapter.get('text', '')
+                chapter_text = chapter.text
 
     if not chapter_text or not chapter_text.strip():
         return jsonify({'error': 'No chapter text provided'}), 400
@@ -319,10 +319,11 @@ def suggest_entities(project_id: str):
 
     # 调用 LLM 提取实体
     try:
-        prompt = format_entity_extract_prompt(chapter_text)
+        user_message = format_entity_extract_prompt(chapter_text)
         result = llm_client.call(
             system_prompt=ENTITY_EXTRACT_SYSTEM,
-            user_prompt=prompt,
+            user_message=user_message,
+            task_type="entity_extract",
         )
     except Exception:
         return jsonify({

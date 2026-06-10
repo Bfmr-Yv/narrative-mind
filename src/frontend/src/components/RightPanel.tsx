@@ -112,7 +112,7 @@ const TabAnalysis: React.FC = () => {
 // ---------------------------------------------------------------------------
 
 const EntitySuggestions: React.FC = () => {
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const [suggestions, setSuggestions] = useState<EntitySuggestion[]>([]);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState('');
@@ -147,14 +147,11 @@ const EntitySuggestions: React.FC = () => {
       updated.locations = Array.from(new Set([...updated.locations, name]));
     }
     try {
-      await apiClient.saveProjectSettings(state.activeProjectId, updated);
+      const saved = await apiClient.saveProjectSettings(state.activeProjectId, updated);
+      // Update context state so selectors refresh immediately
+      dispatch({ type: 'SET_PROJECT_SETTINGS', payload: saved });
       // Remove from suggestions after adding
       setSuggestions(prev => prev.filter(s => s.name !== name));
-      // Refresh settings in context by triggering a reload
-      const refreshed = await apiClient.getProjectSettings(state.activeProjectId);
-      if (refreshed) {
-        window.dispatchEvent(new CustomEvent('settings-updated', { detail: refreshed }));
-      }
     } catch { /* ignored */ }
   };
 
