@@ -26,6 +26,7 @@ from src.corpus_anchor.slice_manager import SliceManager
 from src.corpus_anchor.embedder import Embedder
 from src.corpus_anchor.retriever import Retriever
 from src.corpus_anchor.enricher import Enricher
+from src.corpus_anchor.refiner import Refiner
 from src.engines.character import CharacterEngine, CharacterQuery
 from src.engines.world import WorldEngine, WorldQuery
 from src.consistency_guardian.guardian import ConsistencyGuardian, GuardianInput
@@ -105,12 +106,17 @@ world_engine.load_character_power_levels({
 })
 
 guardian = ConsistencyGuardian()
+
+# 初始化静态语料反哺器（Item 1: Refiner）
+refiner = Refiner(slice_manager=slice_manager)
+
 orchestrator = Orchestrator(
     character_engine=character_engine,
     world_engine=world_engine,
     guardian=guardian,
     enricher=_enricher,
     retriever=retriever,
+    refiner=refiner,
 )
 
 # 项目管理 — 项目目录放在 EXE 旁边（可写），而非临时目录
@@ -366,6 +372,7 @@ def health_check():
         **cost_tracker.status(),
         'enriched_slices_count': _enricher.dynamic_slice_count,
         'analysis_records': analysis_store.total_count(),
+        'refinements_count': refiner.refinement_count,
     })
 
 

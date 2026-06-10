@@ -84,6 +84,7 @@ class Orchestrator:
         guardian: Optional[ConsistencyGuardian] = None,
         enricher: Optional[object] = None,
         retriever: Optional[object] = None,
+        refiner: Optional[object] = None,
     ) -> None:
         """初始化编排器
 
@@ -93,12 +94,14 @@ class Orchestrator:
             guardian: 一致性守卫实例
             enricher: 语料自扩充器（可选，用于触发扩充回路）
             retriever: 语料检索器（可选，用于重建动态索引）
+            refiner: 静态语料标注优化器（可选，用于反哺静态切片）
         """
         self._character_engine = character_engine
         self._world_engine = world_engine
         self._guardian = guardian or ConsistencyGuardian()
         self._enricher = enricher
         self._retriever = retriever
+        self._refiner = refiner
 
     def execute(self, action: UserAction) -> OrchestratorResult:
         """执行用户操作
@@ -308,5 +311,13 @@ class Orchestrator:
             if self._retriever:
                 self._retriever.rebuild_dynamic_index()
 
+            # 触发静态语料反哺回路（Item 1: Refiner）
+            if self._refiner:
+                self._refiner.refine(
+                    engine_results=engine_results,
+                    scene_text=scene_text,
+                    character_id=character_id,
+                )
+
         except Exception:
-            pass  # 扩充失败不影响主流程
+            pass  # 扩充/反哺失败不影响主流程
