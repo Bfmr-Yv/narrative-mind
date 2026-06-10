@@ -1,0 +1,353 @@
+"""
+Narrative Mind API 服务器 — Phase 1
+
+职责：提供 REST API 接口，连接前端和 Python 后端。
+"""
+
+import os
+import sys
+from pathlib import Path
+
+# 可靠路径解析：支持开发模式 (python api_server.py) 和打包模式 (EXE)
+if getattr(sys, 'frozen', False):
+    # PyInstaller 打包模式 — 资源在临时目录
+    _BASE = Path(sys._MEIPASS)
+else:
+    _BASE = Path(__file__).resolve().parent.parent
+
+_PROJECT_ROOT = _BASE
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+
+from src.corpus_anchor.slice_manager import SliceManager
+from src.corpus_anchor.embedder import Embedder
+from src.corpus_anchor.retriever import Retriever
+from src.corpus_anchor.enricher import Enricher
+from src.engines.character import CharacterEngine, CharacterQuery
+from src.engines.world import WorldEngine, WorldQuery
+from src.consistency_guardian.guardian import ConsistencyGuardian, GuardianInput
+from src.orchestrator.router import Orchestrator, UserAction
+from src.project_manager import ProjectManager, ProjectSettings as PSettings
+from src.llm import LLMClient, CostTracker, get_config
+
+app = Flask(__name__, static_folder=None)
+CORS(app)
+
+
+def _to_json(obj):
+    """将 Python 对象递归转换为 JSON 可序列化格式
+
+    处理：dataclass → dict, Enum → value, list/dict 递归。
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, (list, tuple)):
+        return [_to_json(item) for item in obj]
+    if isinstance(obj, dict):
+        return {key: _to_json(val) for key, val in obj.items()}
+    if hasattr(obj, "value"):
+        # Enum
+        return obj.value
+    if hasattr(obj, "__dataclass_fields__") or hasattr(obj, "__dict__"):
+        result = {}
+        for key, val in vars(obj).items():
+            if not key.startswith("_"):
+                result[key] = _to_json(val)
+        return result
+    # Fallback
+    return str(obj)
+
+# 初始化 LLM 客户端和成本追踪
+llm_config = get_config()
+cost_tracker = CostTracker()
+llm_client = LLMClient(config=llm_config, cost_tracker=cost_tracker)
+
+# 初始化语料自扩充器（默认项目 — 后续按 project_id 动态切换）
+_enricher = Enricher(project_id="default")
+
+# 初始化语料锚定层
+slice_manager = SliceManager()
+embedder = Embedder()
+retriever = Retriever(
+    embedder=embedder,
+    slice_manager=slice_manager,
+    similarity_threshold=0.1,
+    llm_client=llm_client,
+    enricher=_enricher,
+)
+
+# 加载语料
+corpus_dir = str(_PROJECT_ROOT / "corpus")
+slice_manager.load_slices(os.path.join(corpus_dir, "public-domain", "hong-lou-meng"))
+slice_manager.load_slices(os.path.join(corpus_dir, "user"))
+
+# 构建索引
+retriever.build_index()
+
+# 初始化引擎（传入 LLM 客户端）
+character_engine = CharacterEngine(retriever=retriever, llm_client=llm_client)
+
+world_engine = WorldEngine(llm_client=llm_client)
+settings_path = str(_PROJECT_ROOT / "config" / "world-settings.json")
+world_engine.load_settings(settings_path)
+world_engine.load_character_power_levels({
+    "贾宝玉": "普通人",
+    "林黛玉": "普通人",
+    "王熙凤": "普通人",
+    "陈平安": "修行者",
+    "路明非": "修行者",
+})
+
+guardian = ConsistencyGuardian()
+orchestrator = Orchestrator(
+    character_engine=character_engine,
+    world_engine=world_engine,
+    guardian=guardian,
+    enricher=_enricher,
+    retriever=retriever,
+)
+
+# 项目管理 — 项目目录放在 EXE 旁边（可写），而非临时目录
+if getattr(sys, 'frozen', False):
+    _PROJECTS_DIR = Path(sys.executable).parent / "projects"
+else:
+    _PROJECTS_DIR = _PROJECT_ROOT / "projects"
+
+project_manager = ProjectManager(str(_PROJECTS_DIR))
+
+
+# =========================================================================
+# Project CRUD
+# =========================================================================
+
+@app.route('/api/projects', methods=['GET'])
+def list_projects():
+    """列出所有项目"""
+    projects = project_manager.list_projects()
+    return jsonify(_to_json(projects))
+
+
+@app.route('/api/projects', methods=['POST'])
+def create_project():
+    """创建新项目"""
+    data = request.json or {}
+    name = data.get('name', '未命名项目')
+    template = data.get('template_settings', None)
+    project = project_manager.create_project(name, template)
+    return jsonify(_to_json(project)), 201
+
+
+@app.route('/api/projects/<project_id>', methods=['GET'])
+def get_project(project_id: str):
+    """获取项目详情"""
+    proj = project_manager.get_project(project_id)
+    if proj is None:
+        return jsonify({'error': 'Project not found'}), 404
+    return jsonify(proj)
+
+
+@app.route('/api/projects/<project_id>', methods=['DELETE'])
+def delete_project(project_id: str):
+    """删除项目"""
+    ok = project_manager.delete_project(project_id)
+    if not ok:
+        return jsonify({'error': 'Project not found'}), 404
+    return jsonify({'deleted': True})
+
+
+@app.route('/api/projects/<project_id>/settings', methods=['GET'])
+def get_project_settings(project_id: str):
+    """获取项目设定"""
+    settings = project_manager.get_settings(project_id)
+    if settings is None:
+        return jsonify({'error': 'Project not found'}), 404
+    return jsonify(_to_json(settings))
+
+
+@app.route('/api/projects/<project_id>/settings', methods=['PUT'])
+def save_project_settings(project_id: str):
+    """保存项目设定"""
+    data = request.json or {}
+    settings = PSettings(
+        characters=data.get('characters', []),
+        locations=data.get('locations', []),
+        power_system=data.get('power_system', {}),
+    )
+    ok = project_manager.save_settings(project_id, settings)
+    if not ok:
+        return jsonify({'error': 'Project not found'}), 404
+    return jsonify(_to_json(settings))
+
+
+# =========================================================================
+# Chapter CRUD
+# =========================================================================
+
+@app.route('/api/projects/<project_id>/chapters', methods=['GET'])
+def list_chapters(project_id: str):
+    """列出项目章节"""
+    chapters = project_manager.list_chapters(project_id)
+    return jsonify(_to_json(chapters))
+
+
+@app.route('/api/projects/<project_id>/chapters', methods=['POST'])
+def create_chapter(project_id: str):
+    """创建新章节"""
+    data = request.json or {}
+    title = data.get('title', '新章节')
+    chapter = project_manager.create_chapter(project_id, title)
+    if chapter is None:
+        return jsonify({'error': 'Project not found'}), 404
+    return jsonify(_to_json(chapter)), 201
+
+
+@app.route('/api/projects/<project_id>/chapters/<chapter_id>', methods=['PUT'])
+def save_chapter(project_id: str, chapter_id: str):
+    """保存章节"""
+    data = request.json or {}
+    title = data.get('title', '')
+    text = data.get('text', '')
+    ok = project_manager.save_chapter(project_id, chapter_id, title, text)
+    if not ok:
+        return jsonify({'error': 'Chapter not found'}), 404
+    return jsonify({'saved': True})
+
+
+@app.route('/api/projects/<project_id>/chapters/<chapter_id>', methods=['DELETE'])
+def delete_chapter(project_id: str, chapter_id: str):
+    """删除章节"""
+    ok = project_manager.delete_chapter(project_id, chapter_id)
+    if not ok:
+        return jsonify({'error': 'Chapter not found'}), 404
+    return jsonify({'deleted': True})
+
+
+# =========================================================================
+# Existing endpoints (with project support)
+# =========================================================================
+
+
+@app.route('/api/character/analyze', methods=['POST'])
+def analyze_character():
+    """分析角色"""
+    data = request.json
+    query = CharacterQuery(
+        character_id=data.get('character_id', ''),
+        scene_text=data.get('scene_text', ''),
+    )
+    result = character_engine.analyze(query)
+    return jsonify(_to_json(result))
+
+
+@app.route('/api/world/validate', methods=['POST'])
+def validate_world():
+    """校验世界规则"""
+    data = request.json
+    query = WorldQuery(
+        event_description=data.get('event_description', ''),
+        location=data.get('location', ''),
+        involved_characters=data.get('involved_characters', []),
+    )
+    result = world_engine.validate(query)
+    return jsonify(_to_json(result))
+
+
+@app.route('/api/guardian/check', methods=['POST'])
+def check_consistency():
+    """一致性检查"""
+    data = request.json
+    input_data = GuardianInput(
+        engine_results=data.get('engine_results', {}),
+        active_dimensions=data.get('active_dimensions', ['character', 'world_rule', 'spatial']),
+    )
+    result = guardian.check(input_data)
+    return jsonify(_to_json(result))
+
+
+@app.route('/api/orchestrator/execute', methods=['POST'])
+def execute_orchestrator():
+    """执行编排器。支持 project_id 参数，使用项目专属设定。"""
+    data = request.json
+    project_id = data.get('project_id')
+
+    # 如果提供了 project_id，加载项目专属设定
+    if project_id:
+        settings = project_manager.get_settings(project_id)
+        if settings:
+            # 动态加载项目角色力量等级
+            char_levels = {name: "修行者" for name in settings.characters}
+            world_engine.load_character_power_levels(char_levels)
+
+    action = UserAction(
+        type=data.get('type', 'analyze'),
+        payload=data.get('payload', {}),
+    )
+    result = orchestrator.execute(action)
+    serialized = _to_json(result)
+
+    # 诊断日志
+    cr = serialized.get('engine_results', {}).get('character_engine', {})
+    print(f"[API] analyze: character={data.get('payload', {}).get('character_id', '?')}, "
+          f"pad={cr.get('pad_state', 'MISSING')}, "
+          f"confidence={cr.get('confidence', 'MISSING')}, "
+          f"llm_ok={llm_client.is_available}")
+
+    return jsonify(serialized)
+
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """健康检查"""
+    return jsonify({
+        'status': 'ok',
+        'slices_loaded': len(slice_manager.get_all_slices()),
+        'vocabulary_size': embedder.vocabulary_size,
+        'llm_available': llm_client.is_available,
+        'llm_model': llm_config.model,
+        **cost_tracker.status(),
+        'enriched_slices_count': _enricher.dynamic_slice_count,
+    })
+
+
+# =========================================================================
+# Static file serving (for packaged/production mode)
+# =========================================================================
+
+_FRONTEND_DIR = _PROJECT_ROOT / "src" / "frontend" / "build"
+
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path: str):
+    """Serve React frontend. Falls back to index.html for SPA routing."""
+    if path:
+        file_path = _FRONTEND_DIR / path
+        if file_path.is_file():
+            return send_file(file_path)
+    return send_file(_FRONTEND_DIR / "index.html")
+
+
+if __name__ == '__main__':
+    import webbrowser
+    import threading
+
+    print("Starting Narrative Mind API server...")
+    print(f"Loaded {len(slice_manager.get_all_slices())} slices")
+    print(f"Vocabulary size: {embedder.vocabulary_size}")
+    print(f"LLM available: {llm_client.is_available}")
+    print(f"LLM model: {llm_config.model}")
+    print(f"Enricher ready: {_enricher.dynamic_slice_count} dynamic slices")
+
+    # Open browser after a short delay
+    if _FRONTEND_DIR.exists():
+        threading.Timer(1.5, lambda: webbrowser.open("http://127.0.0.1:5000")).start()
+        print("Frontend will be served at http://127.0.0.1:5000")
+    else:
+        print("Warning: Frontend not built. Run: cd src/frontend && npm run build")
+
+    app.run(debug=False, port=5000)
