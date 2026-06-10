@@ -151,6 +151,11 @@
 /* No character hint */
 .no-char-hint { font-size: 0.72rem; background: #fff9e6; border: 1px solid #ffd43b; border-radius: 4px; padding: 0.4rem 0.6rem; margin-bottom: 0.5rem; color: #6b5900; line-height: 1.5; }
 
+/* Event prediction hero */
+.prediction-hero { border: 1px solid #bbdefb; border-radius: var(--radius-md); overflow: hidden; margin-bottom: 0.5rem; }
+.prediction-hero .section-title { background: #e3f2fd; border-bottom-color: #bbdefb; }
+.prediction-text { padding: 0.7rem 0.8rem; font-size: 0.85rem; line-height: 1.8; color: var(--light-text); white-space: pre-wrap; word-break: break-word; }
+
 /* PAD character label */
 .char-label { background: #e8f5e9 !important; color: #2e7d32 !important; }
 .char-label.no-char { background: #fff3cd !important; color: #856404 !important; }

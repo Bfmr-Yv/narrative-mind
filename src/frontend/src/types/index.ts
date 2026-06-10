@@ -48,7 +48,14 @@ export interface OrchestratorResponse {
   };
   guardian_output?: GuardianOutput;
   message: string;
+  scene_analysis?: SceneAnalysis;
   extracted_entities?: ExtractedEntities;
+}
+
+export interface SceneAnalysis {
+  characters: string[];
+  locations: string[];
+  event_prediction: string;
 }
 
 export interface ExtractedEntities {

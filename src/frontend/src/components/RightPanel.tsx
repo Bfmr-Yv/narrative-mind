@@ -31,82 +31,7 @@ const ConflictCard: React.FC<{ conflict: Conflict }> = ({ conflict }) => {
 };
 
 // ---------------------------------------------------------------------------
-// Entity cards — shown inside analysis results
-// ---------------------------------------------------------------------------
-
-const EntityCards: React.FC = () => {
-  const { state, dispatch } = useAppContext();
-  const entities = state.currentAnalysis?.extracted_entities;
-  if (!entities) return null;
-
-  const createdChars = entities.characters?.created ?? [];
-  const createdLocs = entities.locations?.created ?? [];
-  const foundChars = entities.characters?.found ?? [];
-  const foundLocs = entities.locations?.found ?? [];
-
-  if (foundChars.length === 0 && foundLocs.length === 0) return null;
-
-  return (
-    <div className="analysis-section entity-section">
-      <h4 className="section-title">
-        <span className="section-icon">&#x1f465;</span>识别到的实体
-        {(createdChars.length > 0 || createdLocs.length > 0) && (
-          <span className="section-badge auto-badge">已自动添加</span>
-        )}
-      </h4>
-
-      {/* Auto-created notification */}
-      {(createdChars.length > 0 || createdLocs.length > 0) && (
-        <div className="auto-create-notice">
-          &#x2705; 已自动将以下实体添加到项目设定：
-          {createdChars.length > 0 && (
-            <span className="auto-create-tags">
-              {createdChars.map(c => <span key={c} className="tag-new char">&#x1f464; {c}</span>)}
-            </span>
-          )}
-          {createdLocs.length > 0 && (
-            <span className="auto-create-tags">
-              {createdLocs.map(l => <span key={l} className="tag-new loc">&#x1f3e0; {l}</span>)}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* All found characters */}
-      {foundChars.length > 0 && (
-        <div className="entity-row">
-          <span className="entity-label">角色</span>
-          <div className="entity-tags">
-            {foundChars.map(c => (
-              <span key={c} className={`entity-tag ${createdChars.includes(c) ? 'created' : 'existing'}`}>
-                {c}
-                {createdChars.includes(c) ? ' ✨新增' : ''}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* All found locations */}
-      {foundLocs.length > 0 && (
-        <div className="entity-row">
-          <span className="entity-label">地点</span>
-          <div className="entity-tags">
-            {foundLocs.map(l => (
-              <span key={l} className={`entity-tag ${createdLocs.includes(l) ? 'created' : 'existing'}`}>
-                {l}
-                {createdLocs.includes(l) ? ' ✨新增' : ''}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// TabAnalysis
+// TabAnalysis — unified scene analysis display
 // ---------------------------------------------------------------------------
 
 const TabAnalysis: React.FC = () => {
@@ -114,38 +39,79 @@ const TabAnalysis: React.FC = () => {
   const a = state.currentAnalysis;
   if (!a) return <div className="empty-state"><div className="empty-icon">&#x1f50d;</div><p>暂无分析结果</p><p className="empty-hint">在编辑器输入文本后点击工具栏「分析」按钮</p></div>;
 
+  const sa = a.scene_analysis;
+  const entities = a.extracted_entities;
   const cr = a.engine_results?.character_engine;
   const wr = a.engine_results?.world_engine;
   const g = a.guardian_output;
 
-  const charName = state.selectedCharacterId || '未指定角色';
+  const createdChars = entities?.characters?.created ?? [];
+  const createdLocs = entities?.locations?.created ?? [];
 
   return (
     <div className="tab-analysis">
-      {/* Entity discovery (always shown first when available) */}
-      <EntityCards />
-
-      {g && g.alarm_level !== 'info' && (
-        <div className={`alarm-banner alarm-${g.alarm_level}`}>
-          {g.alarm_level === 'critical' ? '⚠️ 检测到严重冲突，建议立即审查' : 'ℹ️ 存在需要注意的问题'}
-          <span className="alarm-action">需执行: {g.action_required}</span>
+      {/* ==== 事件推演（主结果，置顶） ==== */}
+      {sa?.event_prediction && (
+        <div className="prediction-hero">
+          <h4 className="section-title">
+            <span className="section-icon">&#x1f4d6;</span>事件推演
+          </h4>
+          <div className="prediction-text">{sa.event_prediction}</div>
         </div>
       )}
+
+      {/* ==== 角色 & 地点（自动识别+创建） ==== */}
+      {(sa?.characters?.length || sa?.locations?.length) && (
+        <div className="analysis-section entity-section">
+          <h4 className="section-title">
+            <span className="section-icon">&#x1f465;</span>角色 & 地点
+            {(createdChars.length > 0 || createdLocs.length > 0) && (
+              <span className="section-badge auto-badge">已自动添加</span>
+            )}
+          </h4>
+          {(createdChars.length > 0 || createdLocs.length > 0) && (
+            <div className="auto-create-notice">
+              &#x2705; 已自动添加到项目：
+              {createdChars.map(c => <span key={c} className="tag-new char">&#x1f464; {c}</span>)}
+              {createdLocs.map(l => <span key={l} className="tag-new loc">&#x1f3e0; {l}</span>)}
+            </div>
+          )}
+          {sa.characters.length > 0 && (
+            <div className="entity-row">
+              <span className="entity-label">角色</span>
+              <div className="entity-tags">
+                {sa.characters.map(c => (
+                  <span key={c} className={`entity-tag ${createdChars.includes(c) ? 'created' : 'existing'}`}>
+                    {c}{createdChars.includes(c) ? ' ✨' : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {sa.locations.length > 0 && (
+            <div className="entity-row">
+              <span className="entity-label">地点</span>
+              <div className="entity-tags">
+                {sa.locations.map(l => (
+                  <span key={l} className={`entity-tag ${createdLocs.includes(l) ? 'created' : 'existing'}`}>
+                    {l}{createdLocs.includes(l) ? ' ✨' : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==== 角色情感 PAD ==== */}
       {cr && (
         <div className="analysis-section">
           <h4 className="section-title">
             <span className="section-icon">&#x1f9e0;</span>角色情感 (PAD)
             <span className={`section-badge char-label ${!state.selectedCharacterId ? 'no-char' : ''}`}>
-              {charName}
+              {state.selectedCharacterId || '未指定角色'}
             </span>
-            {cr.needs_human_review ? <span className="section-badge">需审查</span> : null}
           </h4>
-          {!state.selectedCharacterId && (
-            <div className="no-char-hint">
-              &#x1f4a1; 尚未指定分析角色。AI 已自动识别文本中的角色（见上方「识别到的实体」）。
-              请在工具栏选择角色后重新分析，以获取该角色的精确 PAD 和行为预测。
-            </div>
-          )}
           <div className="pad-chart">
             <PADBar label="愉悦度 P" value={cr.pad_state.pleasure} />
             <PADBar label="唤醒度 A" value={cr.pad_state.arousal} />
@@ -154,20 +120,16 @@ const TabAnalysis: React.FC = () => {
           {cr.behavior_prediction && (
             <div className="prediction-box">
               <div className="prediction-main">
-                <span className="pred-label">预测</span>
+                <span className="pred-label">行为</span>
                 <span className="pred-action">{cr.behavior_prediction.predicted_action}</span>
                 <span className="pred-confidence">{Math.round(cr.behavior_prediction.confidence * 100)}%</span>
               </div>
-              {cr.behavior_prediction.alternative_actions.length > 0 && (
-                <div className="prediction-alt">备选: {cr.behavior_prediction.alternative_actions.join(' / ')}</div>
-              )}
             </div>
-          )}
-          {cr.implicit_triggers.length > 0 && (
-            <div className="trigger-tags">{cr.implicit_triggers.map((t, i) => <span key={i} className="tag">{t}</span>)}</div>
           )}
         </div>
       )}
+
+      {/* ==== 世界规则 ==== */}
       {wr && (
         <div className="analysis-section">
           <h4 className="section-title"><span className="section-icon">&#x1f30d;</span>世界规则</h4>
@@ -189,6 +151,14 @@ const TabAnalysis: React.FC = () => {
             <span className={`chip ${wr.spatial_consistency ? 'ok' : 'warn'}`}>空间: {wr.spatial_consistency ? '一致' : '冲突'}</span>
             <span className="chip neutral">力量: {wr.power_level_validation}</span>
           </div>
+        </div>
+      )}
+
+      {/* ==== 冲突报告 ==== */}
+      {g && g.alarm_level !== 'info' && (
+        <div className={`alarm-banner alarm-${g.alarm_level}`}>
+          {g.alarm_level === 'critical' ? '⚠️ 检测到严重冲突，建议立即审查' : 'ℹ️ 存在需要注意的问题'}
+          <span className="alarm-action">需执行: {g.action_required}</span>
         </div>
       )}
       {g && g.conflicts.length > 0 && (

@@ -34,7 +34,10 @@ from src.orchestrator.router import Orchestrator, UserAction
 from src.project_manager import ProjectManager, ProjectSettings as PSettings
 from src.analysis_store import AnalysisStore
 from src.llm import LLMClient, CostTracker, get_config
-from src.llm.prompts import ENTITY_EXTRACT_SYSTEM, format_entity_extract_prompt
+from src.llm.prompts import (
+    ENTITY_EXTRACT_SYSTEM, format_entity_extract_prompt,
+    SCENE_ANALYSIS_SYSTEM, format_scene_analysis_prompt,
+)
 
 app = Flask(__name__, static_folder=None)
 CORS(app)
@@ -395,16 +398,15 @@ def _extract_context(text: str, entity_name: str, window: int = 20) -> str:
     return f"{prefix}{snippet}{suffix}"
 
 
-def _extract_and_sync_entities(
+def _run_scene_analysis(
     project_id: str,
     scene_text: str,
     llm_client: Any,
     project_manager: Any,
 ) -> dict:
-    """从文本提取实体并自动同步到项目设定
+    """统一场景分析：角色提取 + 地点提取 + 事件推演
 
-    集成到分析流程中：LLM 提取角色/地点 → 与已知列表对比 →
-    自动创建新实体 → 返回完整结果。
+    一次 LLM 调用返回三个维度，自动将新角色/地点同步到项目设定。
 
     Args:
         project_id: 项目 ID
@@ -414,57 +416,62 @@ def _extract_and_sync_entities(
 
     Returns:
         {
-            characters: {found, created, existing},
-            locations: {found, created, existing}
+            scene_analysis: {characters, locations, event_prediction},
+            entities: {characters: {found,created,existing}, locations: {...}},
+            updated_settings: {characters, locations}
         }
     """
-    from src.llm.prompts import ENTITY_EXTRACT_SYSTEM, format_entity_extract_prompt
-
-    # 1. 调用 LLM 提取实体
-    user_message = format_entity_extract_prompt(scene_text)
+    # 1. 统一 LLM 调用：角色 + 地点 + 事件推演
+    user_message = format_scene_analysis_prompt(scene_text)
     result = llm_client.call(
-        system_prompt=ENTITY_EXTRACT_SYSTEM,
+        system_prompt=SCENE_ANALYSIS_SYSTEM,
         user_message=user_message,
-        task_type="entity_extract",
+        task_type="scene_analysis",
     )
+
+    if not isinstance(result, dict):
+        print("[SceneAnalysis] LLM returned non-dict, falling back to entity extraction")
+        # Fallback: 用旧版实体提取
+        user_message = format_entity_extract_prompt(scene_text)
+        result = llm_client.call(
+            system_prompt=ENTITY_EXTRACT_SYSTEM,
+            user_message=user_message,
+            task_type="entity_extract",
+        )
+        if not isinstance(result, dict):
+            result = {}
 
     extracted_chars = result.get('characters', []) if isinstance(result, dict) else []
     extracted_locs = result.get('locations', []) if isinstance(result, dict) else []
+    event_prediction = result.get('event_prediction', '') if isinstance(result, dict) else ''
+
+    print(f"[SceneAnalysis] chars={extracted_chars}, locs={extracted_locs}, "
+          f"prediction_len={len(event_prediction)}")
 
     # 2. 获取项目当前设定
     settings = project_manager.get_settings(project_id)
     known_characters = list(settings.characters) if settings else []
     known_locations = list(settings.locations) if settings else []
 
-    # 3. 分离：新建 vs 已存在
+    # 3. 分离新建 vs 已存在
     known_chars_lower = {c.lower() for c in known_characters}
     known_locs_lower = {l.lower() for l in known_locations}
 
-    new_chars = []
-    existing_chars = []
+    new_chars, existing_chars = [], []
     for name in extracted_chars:
         if not isinstance(name, str) or not name.strip():
             continue
-        if name.lower() not in known_chars_lower:
-            new_chars.append(name)
-        else:
-            existing_chars.append(name)
+        (existing_chars if name.lower() in known_chars_lower else new_chars).append(name)
 
-    new_locs = []
-    existing_locs = []
+    new_locs, existing_locs = [], []
     for name in extracted_locs:
         if not isinstance(name, str) or not name.strip():
             continue
-        if name.lower() not in known_locs_lower:
-            new_locs.append(name)
-        else:
-            existing_locs.append(name)
+        (existing_locs if name.lower() in known_locs_lower else new_locs).append(name)
 
     # 4. 自动创建新实体
-    created_chars = []
-    created_locs = []
-    updated_characters = known_characters
-    updated_locations = known_locations
+    created_chars, created_locs = [], []
+    updated_characters, updated_locations = known_characters, known_locations
     if new_chars or new_locs:
         try:
             updated_characters = list(dict.fromkeys(known_characters + new_chars))
@@ -475,25 +482,21 @@ def _extract_and_sync_entities(
                 power_system=settings.power_system if settings else {},
             )
             project_manager.save_settings(project_id, updated)
-            created_chars = new_chars
-            created_locs = new_locs
-            print(f"[EntityExtract] LLM found {len(extracted_chars)} chars, {len(extracted_locs)} locs. "
-                  f"Auto-created: {created_chars} | {created_locs}")
+            created_chars, created_locs = new_chars, new_locs
+            print(f"[SceneAnalysis] Auto-created: chars={created_chars}, locs={created_locs}")
         except Exception as e:
-            print(f"[EntityExtract] Auto-create failed: {e}")
+            print(f"[SceneAnalysis] Auto-create failed: {e}")
 
     return {
-        'characters': {
-            'found': extracted_chars,
-            'created': created_chars,
-            'existing': existing_chars,
+        'scene_analysis': {
+            'characters': extracted_chars,
+            'locations': extracted_locs,
+            'event_prediction': event_prediction,
         },
-        'locations': {
-            'found': extracted_locs,
-            'created': created_locs,
-            'existing': existing_locs,
+        'entities': {
+            'characters': {'found': extracted_chars, 'created': created_chars, 'existing': existing_chars},
+            'locations': {'found': extracted_locs, 'created': created_locs, 'existing': existing_locs},
         },
-        # 返回更新后的完整列表，供前端直接使用
         'updated_settings': {
             'characters': updated_characters,
             'locations': updated_locations,
@@ -579,31 +582,33 @@ def execute_orchestrator():
             except Exception:
                 pass  # 持久化失败不影响主流程
 
-    # 实体提取 + 自动创建（集成到分析流程）
-    extracted_entities = None
+    # 统一场景分析：角色 + 地点 + 事件推演（一次 LLM 调用）
+    scene_analysis = None
     if project_id and action.type == 'analyze' and llm_client.is_available:
         scene_text = data.get('payload', {}).get('scene_text', '')
         if scene_text and scene_text.strip():
             try:
-                extracted_entities = _extract_and_sync_entities(
+                scene_analysis = _run_scene_analysis(
                     project_id=project_id,
                     scene_text=scene_text,
                     llm_client=llm_client,
                     project_manager=project_manager,
                 )
-                serialized['extracted_entities'] = extracted_entities
-                print(f"[API] Entity extraction complete: "
-                      f"chars={extracted_entities['characters']['found']}, "
-                      f"locs={extracted_entities['locations']['found']}")
+                serialized['scene_analysis'] = scene_analysis['scene_analysis']
+                serialized['extracted_entities'] = scene_analysis['entities']
+                serialized['extracted_entities']['updated_settings'] = scene_analysis['updated_settings']
             except Exception as e:
-                print(f"[API] Entity extraction failed: {type(e).__name__}: {e}")
+                print(f"[API] Scene analysis failed: {type(e).__name__}: {e}")
 
     # 诊断日志
+    if scene_analysis:
+        sa = scene_analysis['scene_analysis']
+        print(f"[API] Scene analysis: chars={sa['characters']}, locs={sa['locations']}, "
+              f"prediction={len(sa['event_prediction'])}chars")
     cr = serialized.get('engine_results', {}).get('character_engine', {})
-    print(f"[API] analyze: character={data.get('payload', {}).get('character_id', '?')}, "
+    print(f"[API] Engine: character={data.get('payload', {}).get('character_id', '?')}, "
           f"pad={cr.get('pad_state', 'MISSING')}, "
-          f"confidence={cr.get('confidence', 'MISSING')}, "
-          f"llm_ok={llm_client.is_available}")
+          f"confidence={cr.get('confidence', 'MISSING')}")
 
     return jsonify(serialized)
 
