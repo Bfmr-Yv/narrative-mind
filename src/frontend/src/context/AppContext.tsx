@@ -151,12 +151,25 @@ function reducer(state: AppState, action: AppAction): AppState {
         chapterId: state.activeChapterId || '',
         response: action.payload,
       };
+      // If entities were auto-created, sync projectSettings immediately
+      const updatedSettings = action.payload?.extracted_entities?.updated_settings;
+      const newSettings = updatedSettings ? {
+        ...(state.projectSettings || { characters: [], locations: [], power_system: {} }),
+        characters: updatedSettings.characters,
+        locations: updatedSettings.locations,
+      } : state.projectSettings;
+      // Auto-select first character if none selected and characters now exist
+      const autoSelectChar = (!state.selectedCharacterId && updatedSettings?.characters?.length)
+        ? updatedSettings.characters[0]
+        : state.selectedCharacterId;
       return {
         ...state,
         isAnalyzing: false,
         currentAnalysis: action.payload,
         analysisHistory: [entry, ...state.analysisHistory],
         analysisError: null,
+        projectSettings: newSettings,
+        selectedCharacterId: autoSelectChar,
         costData: {
           ...state.costData,
           currentMonth: state.costData.currentMonth + 0.01,

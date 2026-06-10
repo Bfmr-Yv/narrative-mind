@@ -54,6 +54,7 @@ export interface OrchestratorResponse {
 export interface ExtractedEntities {
   characters: { found: string[]; created: string[]; existing: string[] };
   locations: { found: string[]; created: string[]; existing: string[] };
+  updated_settings?: { characters: string[]; locations: string[] };
 }
 
 export interface CharacterAnalysis {

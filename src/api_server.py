@@ -463,18 +463,24 @@ def _extract_and_sync_entities(
     # 4. 自动创建新实体
     created_chars = []
     created_locs = []
+    updated_characters = known_characters
+    updated_locations = known_locations
     if new_chars or new_locs:
         try:
+            updated_characters = list(dict.fromkeys(known_characters + new_chars))
+            updated_locations = list(dict.fromkeys(known_locations + new_locs))
             updated = PSettings(
-                characters=list(dict.fromkeys(known_characters + new_chars)),
-                locations=list(dict.fromkeys(known_locations + new_locs)),
+                characters=updated_characters,
+                locations=updated_locations,
                 power_system=settings.power_system if settings else {},
             )
             project_manager.save_settings(project_id, updated)
             created_chars = new_chars
             created_locs = new_locs
-        except Exception:
-            pass  # 自动创建失败不影响分析
+            print(f"[EntityExtract] LLM found {len(extracted_chars)} chars, {len(extracted_locs)} locs. "
+                  f"Auto-created: {created_chars} | {created_locs}")
+        except Exception as e:
+            print(f"[EntityExtract] Auto-create failed: {e}")
 
     return {
         'characters': {
@@ -486,6 +492,11 @@ def _extract_and_sync_entities(
             'found': extracted_locs,
             'created': created_locs,
             'existing': existing_locs,
+        },
+        # 返回更新后的完整列表，供前端直接使用
+        'updated_settings': {
+            'characters': updated_characters,
+            'locations': updated_locations,
         },
     }
 
@@ -581,8 +592,11 @@ def execute_orchestrator():
                     project_manager=project_manager,
                 )
                 serialized['extracted_entities'] = extracted_entities
-            except Exception:
-                pass  # 实体提取失败不影响主流程
+                print(f"[API] Entity extraction complete: "
+                      f"chars={extracted_entities['characters']['found']}, "
+                      f"locs={extracted_entities['locations']['found']}")
+            except Exception as e:
+                print(f"[API] Entity extraction failed: {type(e).__name__}: {e}")
 
     # 诊断日志
     cr = serialized.get('engine_results', {}).get('character_engine', {})
