@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import type { Conflict } from '../types';
+import type { Conflict, EntitySuggestion } from '../types';
 import TabCompare from './TabCompare';
+import { apiClient } from '../api/client';
 import './RightPanel.css';
 
 const PADBar: React.FC<{ label: string; value: number }> = ({ label, value }) => {
@@ -99,6 +100,100 @@ const TabAnalysis: React.FC = () => {
         <div className="analysis-section">
           <h4 className="section-title"><span className="section-icon">&#x26a0;&#xfe0f;</span>冲突报告 ({g.conflicts.length})</h4>
           {g.conflicts.map((c, i) => <ConflictCard key={i} conflict={c} />)}
+        </div>
+      )}
+      <EntitySuggestions />
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Entity Suggestions (Item 2: Auto-extraction)
+// ---------------------------------------------------------------------------
+
+const EntitySuggestions: React.FC = () => {
+  const { state } = useAppContext();
+  const [suggestions, setSuggestions] = useState<EntitySuggestion[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [error, setError] = useState('');
+  const [scanned, setScanned] = useState(false);
+
+  const handleScan = async () => {
+    if (!state.activeProjectId || !state.activeChapterId) return;
+    setScanning(true);
+    setError('');
+    try {
+      const result = await apiClient.suggestEntities(state.activeProjectId, {
+        chapter_id: state.activeChapterId,
+      });
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setSuggestions(result.suggestions);
+        setScanned(true);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '扫描失败');
+    }
+    setScanning(false);
+  };
+
+  const handleAdd = async (name: string, type: 'character' | 'location') => {
+    if (!state.activeProjectId || !state.projectSettings) return;
+    const updated = { ...state.projectSettings };
+    if (type === 'character') {
+      updated.characters = Array.from(new Set([...updated.characters, name]));
+    } else {
+      updated.locations = Array.from(new Set([...updated.locations, name]));
+    }
+    try {
+      await apiClient.saveProjectSettings(state.activeProjectId, updated);
+      // Remove from suggestions after adding
+      setSuggestions(prev => prev.filter(s => s.name !== name));
+      // Refresh settings in context by triggering a reload
+      const refreshed = await apiClient.getProjectSettings(state.activeProjectId);
+      if (refreshed) {
+        window.dispatchEvent(new CustomEvent('settings-updated', { detail: refreshed }));
+      }
+    } catch { /* ignored */ }
+  };
+
+  return (
+    <div className="analysis-section">
+      <h4 className="section-title">
+        <span className="section-icon">&#x1f50d;</span>实体提取
+      </h4>
+      {!scanned ? (
+        <button
+          className="scan-btn"
+          onClick={handleScan}
+          disabled={scanning || !state.activeChapterId}
+        >
+          {scanning ? '扫描中…' : '扫描角色与地点'}
+        </button>
+      ) : error ? (
+        <p className="scan-error">{error}</p>
+      ) : suggestions.length === 0 ? (
+        <p className="no-data">未发现新角色或地点</p>
+      ) : (
+        <div className="suggestion-list">
+          {suggestions.map((s, i) => (
+            <div key={i} className="suggestion-card">
+              <div className="suggestion-header">
+                <span className="suggestion-name">{s.name}</span>
+                <span className={`suggestion-type type-${s.type}`}>
+                  {s.type === 'character' ? '角色' : '地点'}
+                </span>
+                <button
+                  className="suggestion-add-btn"
+                  onClick={() => handleAdd(s.name, s.type)}
+                >
+                  + 添加
+                </button>
+              </div>
+              <div className="suggestion-context">{s.context}</div>
+            </div>
+          ))}
         </div>
       )}
     </div>

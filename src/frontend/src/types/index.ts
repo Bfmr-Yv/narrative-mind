@@ -220,6 +220,25 @@ export type AppAction =
   | { type: 'SET_API_STATUS'; payload: boolean };
 
 // =========================================================================
+// Entity suggestions (Item 2: Auto-extraction)
+// =========================================================================
+
+export interface EntitySuggestion {
+  name: string;
+  type: 'character' | 'location';
+  context: string;
+  is_new: boolean;
+}
+
+export interface EntitySuggestionsResponse {
+  suggestions: EntitySuggestion[];
+  known_characters: string[];
+  known_locations: string[];
+  llm_used: boolean;
+  error?: string;
+}
+
+// =========================================================================
 // Defaults (empty — user projects provide their own)
 // =========================================================================
 

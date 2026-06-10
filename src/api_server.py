@@ -34,6 +34,7 @@ from src.orchestrator.router import Orchestrator, UserAction
 from src.project_manager import ProjectManager, ProjectSettings as PSettings
 from src.analysis_store import AnalysisStore
 from src.llm import LLMClient, CostTracker, get_config
+from src.llm.prompts import ENTITY_EXTRACT_SYSTEM, format_entity_extract_prompt
 
 app = Flask(__name__, static_folder=None)
 CORS(app)
@@ -270,6 +271,127 @@ def save_analysis_record(project_id: str, chapter_id: str):
         response=data.get('response', {}),
     )
     return jsonify(_to_json(record)), 201
+
+
+# =========================================================================
+# Entity suggestions endpoint (Item 2)
+# =========================================================================
+
+
+@app.route('/api/projects/<project_id>/suggestions/entities', methods=['POST'])
+def suggest_entities(project_id: str):
+    """从章节文本中自动提取角色和地点建议
+
+    请求体：
+        - chapter_text: str — 章节文本（优先使用）
+        - chapter_id: str — 章节 ID（若未提供 chapter_text，则从项目加载）
+
+    返回不在项目已知列表中的新实体建议。
+    """
+    data = request.json or {}
+
+    # 获取章节文本
+    chapter_text = data.get('chapter_text', '')
+    if not chapter_text:
+        chapter_id = data.get('chapter_id', '')
+        if chapter_id:
+            chapter = project_manager.get_chapter(project_id, chapter_id)
+            if chapter:
+                chapter_text = chapter.get('text', '')
+
+    if not chapter_text or not chapter_text.strip():
+        return jsonify({'error': 'No chapter text provided'}), 400
+
+    # 检查 LLM 可用性
+    if not llm_client.is_available:
+        return jsonify({
+            'error': 'LLM 不可用，无法进行实体提取',
+            'suggestions': [],
+            'known_characters': [],
+            'known_locations': [],
+            'llm_used': False,
+        }), 503
+
+    # 获取项目已知实体
+    settings = project_manager.get_settings(project_id)
+    known_characters = list(settings.characters) if settings else []
+    known_locations = list(settings.locations) if settings else []
+
+    # 调用 LLM 提取实体
+    try:
+        prompt = format_entity_extract_prompt(chapter_text)
+        result = llm_client.call(
+            system_prompt=ENTITY_EXTRACT_SYSTEM,
+            user_prompt=prompt,
+        )
+    except Exception:
+        return jsonify({
+            'error': 'LLM 调用失败',
+            'suggestions': [],
+            'known_characters': known_characters,
+            'known_locations': known_locations,
+            'llm_used': False,
+        }), 500
+
+    # 解析 LLM 结果
+    extracted_chars = result.get('characters', []) if isinstance(result, dict) else []
+    extracted_locs = result.get('locations', []) if isinstance(result, dict) else []
+
+    # 找出不在已知列表中的新实体
+    known_chars_lower = {c.lower() for c in known_characters}
+    known_locs_lower = {l.lower() for l in known_locations}
+
+    suggestions = []
+
+    for name in extracted_chars:
+        if isinstance(name, str) and name.lower() not in known_chars_lower:
+            # 提取上下文（原文中包含该名称的片段）
+            context = _extract_context(chapter_text, name)
+            suggestions.append({
+                'name': name,
+                'type': 'character',
+                'context': context,
+                'is_new': True,
+            })
+
+    for name in extracted_locs:
+        if isinstance(name, str) and name.lower() not in known_locs_lower:
+            context = _extract_context(chapter_text, name)
+            suggestions.append({
+                'name': name,
+                'type': 'location',
+                'context': context,
+                'is_new': True,
+            })
+
+    return jsonify({
+        'suggestions': suggestions,
+        'known_characters': known_characters,
+        'known_locations': known_locations,
+        'llm_used': True,
+    })
+
+
+def _extract_context(text: str, entity_name: str, window: int = 20) -> str:
+    """从文本中提取包含实体名称的上下文片段
+
+    Args:
+        text: 完整文本
+        entity_name: 实体名称
+        window: 前后窗口字符数
+
+    Returns:
+        上下文片段（含省略号标注）
+    """
+    pos = text.find(entity_name)
+    if pos == -1:
+        return f"…{entity_name}…"
+    start = max(0, pos - window)
+    end = min(len(text), pos + len(entity_name) + window)
+    snippet = text[start:end]
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(text) else ""
+    return f"{prefix}{snippet}{suffix}"
 
 
 # =========================================================================

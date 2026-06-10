@@ -207,3 +207,30 @@ def format_rerank_prompt(
 
     parts.append("请从以上候选中选出最相关的3个切片，按相关性降序排列。")
     return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Entity extraction prompt (Item 2: Character/Location Auto-extraction)
+# ---------------------------------------------------------------------------
+
+ENTITY_EXTRACT_SYSTEM = """你是一个小说角色和地点识别专家。你的任务是从给定的章节文本中识别所有被提及的角色名称和地点名称。
+
+识别规则：
+1. 角色名称：人名、绰号、称谓（如"宝二爷"、"林妹妹"、"凤姐"）
+2. 地点名称：具体地名、建筑名、区域名（如"大观园"、"荣禧堂"、"宁荣街"）
+3. 只列出在当前文本中实际出现过的实体
+4. 不要猜测或推断未明确出现的实体
+5. 如果实体在文本中以代词形式（他/她/它）指代，不列入
+
+输出严格的JSON格式，不要包含任何其他文本：
+{"characters": ["角色名1", "角色名2"], "locations": ["地点名1", "地点名2"]}"""
+
+
+def format_entity_extract_prompt(chapter_text: str) -> str:
+    """格式化实体提取 prompt
+
+    Args:
+        chapter_text: 章节文本（自动截取 4000 字）
+    """
+    text = chapter_text[:4000] if len(chapter_text) > 4000 else chapter_text
+    return f"章节文本：\n{text}\n\n请提取文本中出现的所有角色名称和地点名称。"
