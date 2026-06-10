@@ -17,8 +17,16 @@ const CenterPanel: React.FC = () => {
   const chapterTitle = activeChapter?.title ?? '';
   const activeChapterId = state.activeChapterId;
 
-  const chars = state.projectSettings?.characters ?? [];
-  const locs = state.projectSettings?.locations ?? [];
+  // 融合多数据源的角色/地点列表（projectSettings + 当前分析结果）
+  const settingsChars = state.projectSettings?.characters ?? [];
+  const settingsLocs = state.projectSettings?.locations ?? [];
+  const analysisChars = state.currentAnalysis?.scene_analysis?.characters ?? [];
+  const analysisLocs = state.currentAnalysis?.scene_analysis?.locations ?? [];
+  const entityChars = state.currentAnalysis?.extracted_entities?.characters?.found ?? [];
+  const entityLocs = state.currentAnalysis?.extracted_entities?.locations?.found ?? [];
+  // 去重合并：settings 排前面（已持久化的优先）
+  const chars = Array.from(new Set([...settingsChars, ...analysisChars, ...entityChars]));
+  const locs = Array.from(new Set([...settingsLocs, ...analysisLocs, ...entityLocs]));
 
   // 自动保存：文本或标题变化后 2 秒触发
   useEffect(() => {

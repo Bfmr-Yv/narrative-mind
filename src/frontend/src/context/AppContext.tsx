@@ -151,16 +151,23 @@ function reducer(state: AppState, action: AppAction): AppState {
         chapterId: state.activeChapterId || '',
         response: action.payload,
       };
-      // If entities were auto-created, sync projectSettings immediately
-      const updatedSettings = action.payload?.extracted_entities?.updated_settings;
-      const newSettings = updatedSettings ? {
-        ...(state.projectSettings || { characters: [], locations: [], power_system: {} }),
-        characters: updatedSettings.characters,
-        locations: updatedSettings.locations,
+      // Merge auto-discovered entities into projectSettings (from all sources)
+      const sa = action.payload?.scene_analysis;
+      const eu = action.payload?.extracted_entities?.updated_settings;
+      const discoveredChars = eu?.characters ?? sa?.characters ?? [];
+      const discoveredLocs = eu?.locations ?? sa?.locations ?? [];
+      const baseSettings = state.projectSettings || { characters: [], locations: [], power_system: {} };
+      const mergedChars = Array.from(new Set([...baseSettings.characters, ...discoveredChars]));
+      const mergedLocs = Array.from(new Set([...baseSettings.locations, ...discoveredLocs]));
+      const hasNewEntities = discoveredChars.length > 0 || discoveredLocs.length > 0;
+      const newSettings = hasNewEntities ? {
+        ...baseSettings,
+        characters: mergedChars,
+        locations: mergedLocs,
       } : state.projectSettings;
       // Auto-select first character if none selected and characters now exist
-      const autoSelectChar = (!state.selectedCharacterId && updatedSettings?.characters?.length)
-        ? updatedSettings.characters[0]
+      const autoSelectChar = (!state.selectedCharacterId && mergedChars.length > 0)
+        ? mergedChars[0]
         : state.selectedCharacterId;
       return {
         ...state,
