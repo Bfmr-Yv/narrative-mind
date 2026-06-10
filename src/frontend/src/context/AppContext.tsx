@@ -147,14 +147,32 @@ function reducer(state: AppState, action: AppAction): AppState {
       };
       // Merge discovered entities into project settings
       const merged = mergeDiscoveredEntities(state, response);
-      // Auto-select first character if none selected
+      // Auto-select first character if none selected, set PAD from cache
       const autoChar = (!state.selectedCharacterId && merged.chars.length > 0)
         ? merged.chars[0] : state.selectedCharacterId;
+      const charPads = response.scene_analysis?.character_pads ?? {};
+      const selectedPad = autoChar ? charPads[autoChar] : null;
+      const updatedResponse = selectedPad ? {
+        ...response,
+        engine_results: {
+          ...response.engine_results,
+          character_engine: {
+            pad_state: selectedPad.pad_state,
+            behavior_prediction: selectedPad.behavior_prediction || {
+              predicted_action: '', confidence: 0,
+              supporting_evidence: [], alternative_actions: [],
+            },
+            implicit_triggers: [],
+            confidence: selectedPad.confidence,
+            needs_human_review: false,
+          },
+        },
+      } : response;
       return {
         ...state,
         isAnalyzing: false,
-        padCharacterId: state.selectedCharacterId,
-        currentAnalysis: response,
+        padCharacterId: autoChar || state.selectedCharacterId,
+        currentAnalysis: updatedResponse,
         analysisHistory: [entry, ...state.analysisHistory],
         analysisError: null,
         projectSettings: merged.settings,
@@ -370,22 +388,21 @@ export function useAppActions() {
     saveSettings, addChapter, saveChapter, deleteChapter, runAnalysis, selectChapter,
     updateChapterTitle: (id: string, title: string) => dispatch({ type: 'UPDATE_CHAPTER_TITLE', payload: { id, title } }),
     updateChapterText: (id: string, text: string) => dispatch({ type: 'UPDATE_CHAPTER_TEXT', payload: { id, text } }),
-    selectCharacter: async (charId: string) => {
+    selectCharacter: (charId: string) => {
       dispatch({ type: 'SELECT_CHARACTER', payload: charId });
-      // Auto-refetch PAD for the newly selected character
-      const chapter = state.chapters.find(ch => ch.id === state.activeChapterId);
-      if (charId && chapter?.text && state.currentAnalysis) {
-        dispatch({ type: 'PAD_LOADING' });
-        try {
-          const cr = await apiClient.analyzeCharacter({
-            character_id: charId,
-            scene_text: chapter.text,
-          });
-          dispatch({ type: 'UPDATE_CHARACTER_PAD', payload: cr });
-        } catch {
-          // PAD re-fetch failed — keep showing old PAD
-          dispatch({ type: 'UPDATE_CHARACTER_PAD', payload: state.currentAnalysis.engine_results.character_engine! });
-        }
+      // Switch PAD instantly from cached character_pads (no extra API call)
+      const pads = state.currentAnalysis?.scene_analysis?.character_pads;
+      if (pads?.[charId]) {
+        const cp = pads[charId];
+        dispatch({
+          type: 'UPDATE_CHARACTER_PAD', payload: {
+            pad_state: cp.pad_state,
+            behavior_prediction: cp.behavior_prediction || { predicted_action: '', confidence: 0, supporting_evidence: [], alternative_actions: [] },
+            implicit_triggers: [],
+            confidence: cp.confidence,
+            needs_human_review: false,
+          },
+        });
       }
     },
     selectLocation: (loc: string) => dispatch({ type: 'SELECT_LOCATION', payload: loc }),

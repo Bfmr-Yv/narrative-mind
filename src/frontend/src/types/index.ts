@@ -20,6 +20,18 @@ export interface SceneAnalysis {
   characters: string[];
   locations: string[];
   event_prediction: string;
+  character_pads: Record<string, CharacterPad>;
+}
+
+export interface CharacterPad {
+  pad_state: { pleasure: number; arousal: number; dominance: number };
+  behavior_prediction: {
+    predicted_action: string;
+    confidence: number;
+    supporting_evidence: string[];
+    alternative_actions: string[];
+  } | null;
+  confidence: number;
 }
 
 export interface CharacterAnalysis {

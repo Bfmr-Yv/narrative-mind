@@ -406,6 +406,7 @@ def _run_scene_analysis(
     scene_text: str,
     llm_client: Any,
     project_manager: Any,
+    character_engine: Any = None,
 ) -> dict:
     """统一场景分析：角色提取 + 地点提取 + 事件推演
 
@@ -490,11 +491,39 @@ def _run_scene_analysis(
         except Exception as e:
             print(f"[SceneAnalysis] Auto-create failed: {e}")
 
+    # 5. 为所有发现角色计算 PAD（维度：每角色独立情感状态）
+    character_pads = {}
+    if character_engine and extracted_chars and llm_client.is_available:
+        for char_name in extracted_chars[:6]:  # 最多 6 个角色，控制成本
+            try:
+                query = CharacterQuery(
+                    character_id=char_name,
+                    scene_text=scene_text[:3000],
+                )
+                cr = character_engine.analyze(query)
+                character_pads[char_name] = {
+                    'pad_state': {
+                        'pleasure': cr.pad_state.pleasure,
+                        'arousal': cr.pad_state.arousal,
+                        'dominance': cr.pad_state.dominance,
+                    },
+                    'behavior_prediction': {
+                        'predicted_action': cr.behavior_prediction.predicted_action if cr.behavior_prediction else '',
+                        'confidence': cr.behavior_prediction.confidence if cr.behavior_prediction else 0,
+                    } if cr.behavior_prediction else None,
+                    'confidence': cr.confidence,
+                }
+                print(f"[SceneAnalysis] PAD for {char_name}: p={cr.pad_state.pleasure:.2f} a={cr.pad_state.arousal:.2f} d={cr.pad_state.dominance:.2f}")
+            except Exception as e:
+                print(f"[SceneAnalysis] PAD failed for {char_name}: {e}")
+        print(f"[SceneAnalysis] Computed PAD for {len(character_pads)} characters")
+
     return {
         'scene_analysis': {
             'characters': extracted_chars,
             'locations': extracted_locs,
             'event_prediction': event_prediction,
+            'character_pads': character_pads,
         },
         'entities': {
             'characters': {'found': extracted_chars, 'created': created_chars, 'existing': existing_chars},
@@ -596,6 +625,7 @@ def execute_orchestrator():
                     scene_text=scene_text,
                     llm_client=llm_client,
                     project_manager=project_manager,
+                    character_engine=character_engine,
                 )
                 serialized['scene_analysis'] = scene_analysis['scene_analysis']
                 serialized['extracted_entities'] = scene_analysis['entities']
