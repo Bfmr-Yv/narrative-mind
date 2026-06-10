@@ -1,0 +1,41 @@
+/* App layout — CSS Grid, responsive */
+
+.app {
+  display: grid;
+  grid-template-columns: var(--left-width) 1fr var(--right-width);
+  grid-template-rows: 1fr var(--bottom-height);
+  grid-template-areas: "left center right" "bottom bottom bottom";
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Panel collapse via CSS class */
+.app.left-closed  { grid-template-columns: 0 1fr var(--right-width); }
+.app.right-closed { grid-template-columns: var(--left-width) 1fr 0; }
+.app.left-closed.right-closed { grid-template-columns: 0 1fr 0; }
+
+/* ===== Responsive breakpoints ===== */
+
+/* 900-1200px: narrower right panel, keep left */
+@media (max-width: 1200px) {
+  :root { --right-width: 320px; }
+}
+
+/* 700-900px: auto-close right panel, keep left */
+@media (max-width: 900px) {
+  .app { grid-template-columns: var(--left-width) 1fr 0; }
+  .app.right-closed { grid-template-columns: var(--left-width) 1fr 0; }
+}
+
+/* 500-700px: auto-close left panel too, only editor */
+@media (max-width: 700px) {
+  .app { grid-template-columns: 0 1fr 0; }
+  .app.left-closed { grid-template-columns: 0 1fr 0; }
+}
+
+/* < 500px: compact mode */
+@media (max-width: 500px) {
+  :root { --bottom-height: 32px; }
+  .bottom-bar { font-size: 0.65rem; padding: 0 0.5rem; }
+  .bottom-item.muted { display: none; }
+}

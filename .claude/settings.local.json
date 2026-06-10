@@ -8,7 +8,29 @@
       "Bash(echo \"EXIT CODE: $?\")",
       "Bash(uv python *)",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git config *)",
+      "Bash(mkdir -p /c/Users/userf/.openclaw/agents/director/agent)",
+      "Bash(mkdir -p /c/Users/userf/.openclaw/agents/coder/agent)",
+      "Bash(mkdir -p /c/Users/userf/.openclaw/agents/reviewer/agent)",
+      "Bash(mkdir -p /c/Users/userf/.openclaw/workspace-director/shared)",
+      "Bash(python *)",
+      "Bash(node -e \"const j = require\\('/c/Users/userf/.openclaw/openclaw.json'\\); console.log\\('JSON valid, agents:', Object.keys\\(j.agents\\).join\\(', '\\)\\)\")",
+      "Bash(mkdir -p \"/c/Users/userf/AppData/Roaming/SPB_Data/.openclaw/agents/director/agent\")",
+      "Bash(mkdir -p \"/c/Users/userf/AppData/Roaming/SPB_Data/.openclaw/agents/coder/agent\")",
+      "Bash(mkdir -p \"/c/Users/userf/AppData/Roaming/SPB_Data/.openclaw/agents/reviewer/agent\")",
+      "Bash(pip list *)",
+      "Bash(npm --version)",
+      "Bash(pip install *)",
+      "Bash(uv pip *)",
+      "Bash(uv venv *)",
+      "Bash(.venv/Scripts/python scripts/test_integration.py)",
+      "Bash(git log *)",
+      "Bash(gh --version)",
+      "Bash(mkdir -p corpus_bak)",
+      "Bash(mv corpus/user/jl.json corpus_bak/jl.json)",
+      "Bash(mv corpus/user/lz.json corpus_bak/lz.json)"
     ]
   }
 }
