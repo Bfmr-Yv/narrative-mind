@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAppContext } from '../context/AppContext';
-import type { Conflict, EntitySuggestion } from '../types';
+import type { Conflict } from '../types';
 import TabCompare from './TabCompare';
-import { apiClient } from '../api/client';
 import './RightPanel.css';
 
 const PADBar: React.FC<{ label: string; value: number }> = ({ label, value }) => {
@@ -31,6 +30,85 @@ const ConflictCard: React.FC<{ conflict: Conflict }> = ({ conflict }) => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// Entity cards — shown inside analysis results
+// ---------------------------------------------------------------------------
+
+const EntityCards: React.FC = () => {
+  const { state, dispatch } = useAppContext();
+  const entities = state.currentAnalysis?.extracted_entities;
+  if (!entities) return null;
+
+  const createdChars = entities.characters?.created ?? [];
+  const createdLocs = entities.locations?.created ?? [];
+  const foundChars = entities.characters?.found ?? [];
+  const foundLocs = entities.locations?.found ?? [];
+
+  if (foundChars.length === 0 && foundLocs.length === 0) return null;
+
+  return (
+    <div className="analysis-section entity-section">
+      <h4 className="section-title">
+        <span className="section-icon">&#x1f465;</span>识别到的实体
+        {(createdChars.length > 0 || createdLocs.length > 0) && (
+          <span className="section-badge auto-badge">已自动添加</span>
+        )}
+      </h4>
+
+      {/* Auto-created notification */}
+      {(createdChars.length > 0 || createdLocs.length > 0) && (
+        <div className="auto-create-notice">
+          &#x2705; 已自动将以下实体添加到项目设定：
+          {createdChars.length > 0 && (
+            <span className="auto-create-tags">
+              {createdChars.map(c => <span key={c} className="tag-new char">&#x1f464; {c}</span>)}
+            </span>
+          )}
+          {createdLocs.length > 0 && (
+            <span className="auto-create-tags">
+              {createdLocs.map(l => <span key={l} className="tag-new loc">&#x1f3e0; {l}</span>)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* All found characters */}
+      {foundChars.length > 0 && (
+        <div className="entity-row">
+          <span className="entity-label">角色</span>
+          <div className="entity-tags">
+            {foundChars.map(c => (
+              <span key={c} className={`entity-tag ${createdChars.includes(c) ? 'created' : 'existing'}`}>
+                {c}
+                {createdChars.includes(c) ? ' ✨新增' : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* All found locations */}
+      {foundLocs.length > 0 && (
+        <div className="entity-row">
+          <span className="entity-label">地点</span>
+          <div className="entity-tags">
+            {foundLocs.map(l => (
+              <span key={l} className={`entity-tag ${createdLocs.includes(l) ? 'created' : 'existing'}`}>
+                {l}
+                {createdLocs.includes(l) ? ' ✨新增' : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// TabAnalysis
+// ---------------------------------------------------------------------------
+
 const TabAnalysis: React.FC = () => {
   const { state } = useAppContext();
   const a = state.currentAnalysis;
@@ -40,11 +118,13 @@ const TabAnalysis: React.FC = () => {
   const wr = a.engine_results?.world_engine;
   const g = a.guardian_output;
 
-  // Resolve character name for PAD label
   const charName = state.selectedCharacterId || '未指定角色';
 
   return (
     <div className="tab-analysis">
+      {/* Entity discovery (always shown first when available) */}
+      <EntityCards />
+
       {g && g.alarm_level !== 'info' && (
         <div className={`alarm-banner alarm-${g.alarm_level}`}>
           {g.alarm_level === 'critical' ? '⚠️ 检测到严重冲突，建议立即审查' : 'ℹ️ 存在需要注意的问题'}
@@ -55,14 +135,15 @@ const TabAnalysis: React.FC = () => {
         <div className="analysis-section">
           <h4 className="section-title">
             <span className="section-icon">&#x1f9e0;</span>角色情感 (PAD)
-            <span className="section-badge char-label">{charName}</span>
+            <span className={`section-badge char-label ${!state.selectedCharacterId ? 'no-char' : ''}`}>
+              {charName}
+            </span>
             {cr.needs_human_review ? <span className="section-badge">需审查</span> : null}
           </h4>
-          {/* Hint when no character selected */}
           {!state.selectedCharacterId && (
             <div className="no-char-hint">
-              &#x1f4a1; 尚未指定分析角色，请先在工具栏选择角色。
-              如无角色可选，点击工具栏 <strong>「&#x1f50d; 发现」</strong> 按钮自动扫描。
+              &#x1f4a1; 尚未指定分析角色。AI 已自动识别文本中的角色（见上方「识别到的实体」）。
+              请在工具栏选择角色后重新分析，以获取该角色的精确 PAD 和行为预测。
             </div>
           )}
           <div className="pad-chart">
@@ -121,145 +202,6 @@ const TabAnalysis: React.FC = () => {
 };
 
 // ---------------------------------------------------------------------------
-// Entity Suggestions (Item 2) — standalone, used by TabDiscover and TabAnalysis
-// ---------------------------------------------------------------------------
-
-const EntitySuggestions: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
-  const { state, dispatch } = useAppContext();
-  const [suggestions, setSuggestions] = useState<EntitySuggestion[]>([]);
-  const [scanning, setScanning] = useState(false);
-  const [error, setError] = useState('');
-  const [scanned, setScanned] = useState(false);
-
-  const handleScan = async () => {
-    if (!state.activeProjectId || !state.activeChapterId) return;
-    setScanning(true);
-    setError('');
-    try {
-      const result = await apiClient.suggestEntities(state.activeProjectId, {
-        chapter_id: state.activeChapterId,
-      });
-      if (result.error) {
-        setError(result.error);
-      } else {
-        setSuggestions(result.suggestions);
-        setScanned(true);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '扫描失败');
-    }
-    setScanning(false);
-  };
-
-  const handleAdd = async (name: string, type: 'character' | 'location') => {
-    if (!state.activeProjectId || !state.projectSettings) return;
-    const updated = { ...state.projectSettings };
-    if (type === 'character') {
-      updated.characters = Array.from(new Set([...updated.characters, name]));
-    } else {
-      updated.locations = Array.from(new Set([...updated.locations, name]));
-    }
-    try {
-      const saved = await apiClient.saveProjectSettings(state.activeProjectId, updated);
-      dispatch({ type: 'SET_PROJECT_SETTINGS', payload: saved });
-      setSuggestions(prev => prev.filter(s => s.name !== name));
-    } catch { /* ignored */ }
-  };
-
-  if (!state.activeChapterId && !embedded) {
-    return (
-      <div className="empty-state">
-        <div className="empty-icon">&#x1f50d;</div>
-        <p>请先创建章节并输入文本</p>
-        <p className="empty-hint">在章节中输入文本后，可自动扫描其中的角色和地点</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className={embedded ? 'analysis-section' : 'tab-discover'}>
-      {!embedded && (
-        <>
-          <div className="discover-hero">
-            <div className="discover-hero-icon">&#x1f50d;</div>
-            <h3>发现角色与地点</h3>
-            <p>AI 将自动扫描章节文本，识别其中的人物名称和地点名称</p>
-          </div>
-          <div className="discover-info">
-            <div className="discover-info-item">
-              <span className="discover-info-icon">&#x1f464;</span>
-              <span>已知角色: {state.projectSettings?.characters?.length ?? 0} 个</span>
-            </div>
-            <div className="discover-info-item">
-              <span className="discover-info-icon">&#x1f3e0;</span>
-              <span>已知地点: {state.projectSettings?.locations?.length ?? 0} 个</span>
-            </div>
-          </div>
-        </>
-      )}
-      {!embedded && (
-        <h4 className="section-title">
-          <span className="section-icon">&#x1f4d6;</span>扫描结果
-        </h4>
-      )}
-      {!scanned ? (
-        <button
-          className="scan-btn"
-          onClick={handleScan}
-          disabled={scanning || !state.activeChapterId}
-        >
-          {scanning ? '⏳ AI 正在扫描文本...' : '🔍 扫描角色与地点'}
-        </button>
-      ) : error ? (
-        <p className="scan-error">{error}</p>
-      ) : suggestions.length === 0 ? (
-        <div className="scan-empty">
-          <span className="scan-empty-icon">&#x2705;</span>
-          <p>未发现新的角色或地点</p>
-          <p className="empty-hint">当前文本中的角色和地点都已在项目设定中</p>
-        </div>
-      ) : (
-        <div className="suggestion-list">
-          {suggestions.map((s, i) => (
-            <div key={i} className="suggestion-card">
-              <div className="suggestion-header">
-                <span className="suggestion-name">{s.name}</span>
-                <span className={`suggestion-type type-${s.type}`}>
-                  {s.type === 'character' ? '👤 角色' : '📍 地点'}
-                </span>
-                <button
-                  className="suggestion-add-btn"
-                  onClick={() => handleAdd(s.name, s.type)}
-                >
-                  + 添加
-                </button>
-              </div>
-              <div className="suggestion-context">{s.context}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {scanned && (
-        <button
-          className="scan-btn scan-btn-secondary"
-          onClick={handleScan}
-          disabled={scanning || !state.activeChapterId}
-          style={{ marginTop: '0.75rem' }}
-        >
-          {scanning ? '扫描中…' : '重新扫描'}
-        </button>
-      )}
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// TabDiscover — standalone entity scan tab
-// ---------------------------------------------------------------------------
-
-const TabDiscover: React.FC = () => <EntitySuggestions embedded={false} />;
-
-// ---------------------------------------------------------------------------
 // TabHistory
 // ---------------------------------------------------------------------------
 
@@ -308,7 +250,6 @@ const RightPanel: React.FC = () => {
   const { activeRightTab, currentAnalysis, analysisHistory, rightPanelOpen } = state;
   const tabs = [
     { key: 'analysis' as const, label: '分析', count: currentAnalysis ? 1 : 0 },
-    { key: 'discover' as const, label: '发现', count: 0 },
     { key: 'history' as const, label: '历史', count: analysisHistory.length },
     { key: 'compare' as const, label: '对比', count: state.compareSlotA && state.compareSlotB ? 1 : 0 },
     { key: 'references' as const, label: '参考', count: 0 },
@@ -325,7 +266,6 @@ const RightPanel: React.FC = () => {
       </div>
       <div className="tab-content">
         {activeRightTab === 'analysis' && <TabAnalysis />}
-        {activeRightTab === 'discover' && <TabDiscover />}
         {activeRightTab === 'history' && <TabHistory />}
         {activeRightTab === 'compare' && <TabCompare />}
         {activeRightTab === 'references' && <TabReferences />}

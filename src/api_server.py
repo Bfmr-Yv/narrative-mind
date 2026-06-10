@@ -395,6 +395,101 @@ def _extract_context(text: str, entity_name: str, window: int = 20) -> str:
     return f"{prefix}{snippet}{suffix}"
 
 
+def _extract_and_sync_entities(
+    project_id: str,
+    scene_text: str,
+    llm_client: Any,
+    project_manager: Any,
+) -> dict:
+    """从文本提取实体并自动同步到项目设定
+
+    集成到分析流程中：LLM 提取角色/地点 → 与已知列表对比 →
+    自动创建新实体 → 返回完整结果。
+
+    Args:
+        project_id: 项目 ID
+        scene_text: 场景文本
+        llm_client: LLM 客户端
+        project_manager: 项目管理器
+
+    Returns:
+        {
+            characters: {found, created, existing},
+            locations: {found, created, existing}
+        }
+    """
+    from src.llm.prompts import ENTITY_EXTRACT_SYSTEM, format_entity_extract_prompt
+
+    # 1. 调用 LLM 提取实体
+    user_message = format_entity_extract_prompt(scene_text)
+    result = llm_client.call(
+        system_prompt=ENTITY_EXTRACT_SYSTEM,
+        user_message=user_message,
+        task_type="entity_extract",
+    )
+
+    extracted_chars = result.get('characters', []) if isinstance(result, dict) else []
+    extracted_locs = result.get('locations', []) if isinstance(result, dict) else []
+
+    # 2. 获取项目当前设定
+    settings = project_manager.get_settings(project_id)
+    known_characters = list(settings.characters) if settings else []
+    known_locations = list(settings.locations) if settings else []
+
+    # 3. 分离：新建 vs 已存在
+    known_chars_lower = {c.lower() for c in known_characters}
+    known_locs_lower = {l.lower() for l in known_locations}
+
+    new_chars = []
+    existing_chars = []
+    for name in extracted_chars:
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if name.lower() not in known_chars_lower:
+            new_chars.append(name)
+        else:
+            existing_chars.append(name)
+
+    new_locs = []
+    existing_locs = []
+    for name in extracted_locs:
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if name.lower() not in known_locs_lower:
+            new_locs.append(name)
+        else:
+            existing_locs.append(name)
+
+    # 4. 自动创建新实体
+    created_chars = []
+    created_locs = []
+    if new_chars or new_locs:
+        try:
+            updated = PSettings(
+                characters=list(dict.fromkeys(known_characters + new_chars)),
+                locations=list(dict.fromkeys(known_locations + new_locs)),
+                power_system=settings.power_system if settings else {},
+            )
+            project_manager.save_settings(project_id, updated)
+            created_chars = new_chars
+            created_locs = new_locs
+        except Exception:
+            pass  # 自动创建失败不影响分析
+
+    return {
+        'characters': {
+            'found': extracted_chars,
+            'created': created_chars,
+            'existing': existing_chars,
+        },
+        'locations': {
+            'found': extracted_locs,
+            'created': created_locs,
+            'existing': existing_locs,
+        },
+    }
+
+
 # =========================================================================
 # Existing endpoints (with project support)
 # =========================================================================
@@ -472,6 +567,22 @@ def execute_orchestrator():
                 )
             except Exception:
                 pass  # 持久化失败不影响主流程
+
+    # 实体提取 + 自动创建（集成到分析流程）
+    extracted_entities = None
+    if project_id and action.type == 'analyze' and llm_client.is_available:
+        scene_text = data.get('payload', {}).get('scene_text', '')
+        if scene_text and scene_text.strip():
+            try:
+                extracted_entities = _extract_and_sync_entities(
+                    project_id=project_id,
+                    scene_text=scene_text,
+                    llm_client=llm_client,
+                    project_manager=project_manager,
+                )
+                serialized['extracted_entities'] = extracted_entities
+            except Exception:
+                pass  # 实体提取失败不影响主流程
 
     # 诊断日志
     cr = serialized.get('engine_results', {}).get('character_engine', {})
