@@ -1,5 +1,5 @@
 """
-工作记忆 (Working Memory) — Phase 1 简化版
+工作记忆 (Working Memory) — Phase 1
 
 职责：会话级临时记忆存储，会话结束后清空。
 
@@ -71,11 +71,11 @@ class MemoryEntry:
 
 
 # ---------------------------------------------------------------------------
-# 工作记忆骨架
+# 工作记忆实现
 # ---------------------------------------------------------------------------
 
 class WorkingMemory:
-    """工作记忆 — Phase 1 骨架
+    """工作记忆 — Phase 1
 
     会话级临时存储，基于 dict 实现。
     会话结束后数据自动清空（不持久化）。
@@ -91,7 +91,21 @@ class WorkingMemory:
         Args:
             entry: 记忆写入请求
         """
-        raise NotImplementedError("Phase 1 骨架 — 待实现")
+        # 生成唯一键
+        key = self._generate_key(entry)
+
+        # 创建记忆条目
+        memory_entry = MemoryEntry(
+            key=key,
+            data=entry.data,
+            source_engine=entry.source_engine,
+            memory_type=entry.memory_type,
+            confidence=entry.confidence,
+            last_modified=entry.timestamp,
+        )
+
+        # 写入存储
+        self._store[key] = memory_entry
 
     def read(self, query: MemoryQuery) -> list[MemoryEntry]:
         """读取记忆条目
@@ -102,7 +116,39 @@ class WorkingMemory:
         Returns:
             匹配的记忆条目列表，按 last_modified 降序排列
         """
-        raise NotImplementedError("Phase 1 骨架 — 待实现")
+        results = []
+
+        for entry in self._store.values():
+            # 过滤层级
+            if query.tier != "all":
+                # 工作记忆只有 working 层级
+                if query.tier != "working":
+                    continue
+
+            # 过滤角色
+            if query.character_id:
+                entry_char_id = entry.data.get("character_id")
+                if entry_char_id != query.character_id:
+                    continue
+
+            # 过滤记忆类型
+            if query.memory_type:
+                if entry.memory_type != query.memory_type:
+                    continue
+
+            # 过滤时间范围
+            if query.time_range:
+                start, end = query.time_range
+                if not (start <= entry.last_modified <= end):
+                    continue
+
+            results.append(entry)
+
+        # 按时间降序排序
+        results.sort(key=lambda e: e.last_modified, reverse=True)
+
+        # 限制返回数量
+        return results[:query.top_k]
 
     def clear(self) -> None:
         """清空当前工作记忆"""
@@ -111,3 +157,16 @@ class WorkingMemory:
     def size(self) -> int:
         """返回当前记忆条目数"""
         return len(self._store)
+
+    def _generate_key(self, entry: MemoryWrite) -> str:
+        """生成唯一键
+
+        Args:
+            entry: 记忆写入请求
+
+        Returns:
+            唯一键字符串
+        """
+        # 使用时间戳和来源引擎生成键
+        timestamp = entry.timestamp.strftime("%Y%m%d%H%M%S%f")
+        return f"{entry.source_engine}_{entry.memory_type}_{timestamp}"
