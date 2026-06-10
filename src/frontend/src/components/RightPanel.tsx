@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAppContext } from '../context/AppContext';
 import type { Conflict } from '../types';
+import TabCompare from './TabCompare';
 import './RightPanel.css';
 
 const PADBar: React.FC<{ label: string; value: number }> = ({ label, value }) => {
@@ -150,6 +151,7 @@ const RightPanel: React.FC = () => {
   const tabs = [
     { key: 'analysis' as const, label: '分析', count: currentAnalysis ? 1 : 0 },
     { key: 'history' as const, label: '历史', count: analysisHistory.length },
+    { key: 'compare' as const, label: '对比', count: state.compareSlotA && state.compareSlotB ? 1 : 0 },
     { key: 'references' as const, label: '参考', count: 0 },
   ];
 
@@ -165,6 +167,7 @@ const RightPanel: React.FC = () => {
       <div className="tab-content">
         {activeRightTab === 'analysis' && <TabAnalysis />}
         {activeRightTab === 'history' && <TabHistory />}
+        {activeRightTab === 'compare' && <TabCompare />}
         {activeRightTab === 'references' && <TabReferences />}
       </div>
     </div>

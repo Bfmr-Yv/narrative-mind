@@ -1,0 +1,258 @@
+/* TabCompare — side-by-side analysis comparison */
+
+.tab-compare {
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Slot selectors */
+.compare-selectors {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: var(--card-bg, #f8f9fa);
+  border-radius: 8px;
+  border: 1px solid var(--light-border, #e9ecef);
+}
+
+.compare-selector {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compare-selector label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #6c757d);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.compare-selector select {
+  padding: 8px 10px;
+  border: 1px solid var(--light-border, #dee2e6);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #212529);
+  cursor: pointer;
+}
+
+.compare-vs {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary, #4361ee);
+  margin-top: 18px;
+  flex-shrink: 0;
+}
+
+.compare-placeholder {
+  text-align: center;
+  color: var(--text-muted, #6c757d);
+  padding: 40px 0;
+  font-size: 14px;
+}
+
+/* Content area */
+.compare-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.compare-section {
+  border: 1px solid var(--light-border, #e9ecef);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.compare-section .section-title {
+  padding: 10px 14px;
+  margin: 0;
+  background: var(--card-bg, #f8f9fa);
+  border-bottom: 1px solid var(--light-border, #e9ecef);
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compare-section .section-icon {
+  font-size: 16px;
+}
+
+.section-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--primary-light, #e8ecfd);
+  color: var(--primary, #4361ee);
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.section-badge.changed {
+  background: #fff3cd;
+  color: #856404;
+}
+
+/* Dual column layout */
+.compare-dual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.compare-col {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compare-col:first-child {
+  border-right: 1px solid var(--light-border, #e9ecef);
+}
+
+.compare-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #6c757d);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.compare-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary, #212529);
+}
+
+.compare-delta {
+  font-size: 13px;
+  color: var(--text-muted, #6c757d);
+  margin-top: 2px;
+}
+
+.compare-action {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--primary, #4361ee);
+  padding: 8px 12px;
+  background: var(--primary-light, #e8ecfd);
+  border-radius: 6px;
+}
+
+/* Delta badge */
+.delta {
+  font-weight: 600;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+/* PAD bars (reuse RightPanel styles) */
+.pad-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.pad-label {
+  width: 58px;
+  flex-shrink: 0;
+  color: var(--text-muted, #6c757d);
+  font-weight: 500;
+}
+
+.pad-track {
+  flex: 1;
+  height: 8px;
+  background: var(--light-border, #e9ecef);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pad-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.pad-value {
+  width: 42px;
+  text-align: right;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+/* Conflict minis */
+.conflict-mini {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+  border-left: 3px solid transparent;
+  background: var(--card-bg, #f8f9fa);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conflict-mini.level-critical {
+  border-left-color: var(--danger, #e63946);
+  background: #fef0f0;
+}
+
+.conflict-mini.level-warn {
+  border-left-color: var(--warning, #ffc107);
+  background: #fffdf0;
+}
+
+.conflict-dim {
+  font-weight: 600;
+  color: var(--text-muted, #6c757d);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+}
+
+.conflict-text {
+  color: var(--text-primary, #212529);
+  line-height: 1.4;
+}
+
+.no-data {
+  font-size: 12px;
+  color: var(--text-muted, #6c757d);
+  font-style: italic;
+}
+
+/* Reuse empty state styles from RightPanel */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-muted, #6c757d);
+}
+
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: var(--text-muted, #adb5bd);
+  margin-top: 4px;
+}

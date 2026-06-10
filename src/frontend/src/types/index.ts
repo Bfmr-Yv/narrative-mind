@@ -130,7 +130,11 @@ export interface AppState {
   analysisError: string | null;
 
   // Right panel
-  activeRightTab: 'analysis' | 'history' | 'references';
+  activeRightTab: 'analysis' | 'history' | 'compare' | 'references';
+
+  // Comparison (Item 3)
+  compareSlotA: AnalysisHistoryEntry | null;
+  compareSlotB: AnalysisHistoryEntry | null;
 
   // UI
   leftPanelOpen: boolean;
@@ -205,8 +209,11 @@ export type AppAction =
   | { type: 'ANALYSIS_FAILURE'; payload: string }
   // Analysis history persistence (Item 4)
   | { type: 'LOAD_ANALYSIS_HISTORY'; payload: AnalysisRecord[] }
+  // Comparison (Item 3)
+  | { type: 'SELECT_COMPARE_SLOT'; payload: { slot: 'A' | 'B'; entryId: string } }
+  | { type: 'CLEAR_COMPARE' }
   // Tabs & UI
-  | { type: 'SELECT_TAB'; payload: 'analysis' | 'history' | 'references' }
+  | { type: 'SELECT_TAB'; payload: 'analysis' | 'history' | 'compare' | 'references' }
   | { type: 'SELECT_HISTORY_ENTRY'; payload: string }
   | { type: 'TOGGLE_LEFT_PANEL' }
   | { type: 'TOGGLE_RIGHT_PANEL' }

@@ -32,6 +32,8 @@ const initialState: AppState = {
   analysisError: null,
 
   activeRightTab: 'analysis',
+  compareSlotA: null,
+  compareSlotB: null,
   leftPanelOpen: true,
   rightPanelOpen: true,
   showProjectSettings: false,
@@ -195,6 +197,17 @@ function reducer(state: AppState, action: AppAction): AppState {
       if (!entry) return state;
       return { ...state, currentAnalysis: entry.response, activeRightTab: 'analysis' };
     }
+
+    // ---- Comparison (Item 3) ----
+    case 'SELECT_COMPARE_SLOT': {
+      const entry = state.analysisHistory.find(e => e.id === action.payload.entryId) || null;
+      if (action.payload.slot === 'A') {
+        return { ...state, compareSlotA: entry, activeRightTab: 'compare' };
+      }
+      return { ...state, compareSlotB: entry, activeRightTab: 'compare' };
+    }
+    case 'CLEAR_COMPARE':
+      return { ...state, compareSlotA: null, compareSlotB: null };
 
     case 'TOGGLE_LEFT_PANEL':
       return { ...state, leftPanelOpen: !state.leftPanelOpen };
