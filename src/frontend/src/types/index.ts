@@ -151,6 +151,32 @@ export interface CostData {
 }
 
 // =========================================================================
+// Analysis records (Item 4: History Persistence)
+// =========================================================================
+
+export interface AnalysisRecord {
+  analysis_id: string;
+  timestamp: string;
+  character_id: string;
+  location: string;
+  chapter_id: string;
+  project_id: string;
+  response_summary: {
+    message: string;
+    character_confidence?: number;
+    pad_state?: { pleasure: number; arousal: number; dominance: number };
+    predicted_action?: string;
+    alarm_level: string;
+    conflict_count: number;
+    needs_human_review: boolean;
+  };
+}
+
+export interface AnalysisRecordFull extends AnalysisRecord {
+  response: OrchestratorResponse;
+}
+
+// =========================================================================
 // App actions
 // =========================================================================
 
@@ -177,6 +203,8 @@ export type AppAction =
   | { type: 'ANALYSIS_START' }
   | { type: 'ANALYSIS_SUCCESS'; payload: OrchestratorResponse }
   | { type: 'ANALYSIS_FAILURE'; payload: string }
+  // Analysis history persistence (Item 4)
+  | { type: 'LOAD_ANALYSIS_HISTORY'; payload: AnalysisRecord[] }
   // Tabs & UI
   | { type: 'SELECT_TAB'; payload: 'analysis' | 'history' | 'references' }
   | { type: 'SELECT_HISTORY_ENTRY'; payload: string }

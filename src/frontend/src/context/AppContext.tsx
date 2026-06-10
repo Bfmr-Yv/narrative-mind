@@ -7,6 +7,7 @@ import type {
   ProjectSettings,
   OrchestratorResponse,
   AnalysisHistoryEntry,
+  AnalysisRecord,
 } from '../types';
 import { EMPTY_SETTINGS } from '../types';
 import { apiClient } from '../api/client';
@@ -165,6 +166,26 @@ function reducer(state: AppState, action: AppAction): AppState {
     case 'ANALYSIS_FAILURE':
       return { ...state, isAnalyzing: false, analysisError: action.payload };
 
+    // ---- Analysis history persistence (Item 4) ----
+    case 'LOAD_ANALYSIS_HISTORY': {
+      // Convert server records to AnalysisHistoryEntry format
+      const entries: AnalysisHistoryEntry[] = action.payload.map(r => ({
+        id: r.analysis_id,
+        timestamp: new Date(r.timestamp),
+        characterId: r.character_id,
+        location: r.location,
+        chapterId: r.chapter_id,
+        response: r.response_summary as unknown as OrchestratorResponse,
+      }));
+      // Merge with existing in-memory entries (deduplicate by id)
+      const existingIds = new Set(state.analysisHistory.map(e => e.id));
+      const newEntries = entries.filter(e => !existingIds.has(e.id));
+      return {
+        ...state,
+        analysisHistory: [...newEntries, ...state.analysisHistory],
+      };
+    }
+
     // ---- UI ----
     case 'SELECT_TAB':
       return { ...state, activeRightTab: action.payload };
@@ -263,6 +284,10 @@ export function useAppActions() {
       dispatch({ type: 'SET_CHAPTERS', payload: chapters });
       if (chapters.length > 0) {
         dispatch({ type: 'SELECT_CHAPTER', payload: chapters[0].id });
+        // Load analysis history for first chapter (Item 4)
+        apiClient.getAnalysisHistory(projectId, chapters[0].id).then(records => {
+          dispatch({ type: 'LOAD_ANALYSIS_HISTORY', payload: records });
+        }).catch(() => {});
       }
     } catch { /* no chapters yet */ }
   }, [dispatch]);
@@ -327,13 +352,29 @@ export function useAppActions() {
         project_id: state.activeProjectId || undefined,
       });
       dispatch({ type: 'ANALYSIS_SUCCESS', payload: result });
+      // Fire-and-forget: persist to server (Item 4)
+      if (state.activeProjectId && state.activeChapterId) {
+        apiClient.saveAnalysis(state.activeProjectId, state.activeChapterId, {
+          character_id: state.selectedCharacterId,
+          location: state.selectedLocation,
+          response: result,
+        }).catch(() => { /* persistence failure is non-blocking */ });
+      }
     } catch (err) {
       dispatch({ type: 'ANALYSIS_FAILURE', payload: err instanceof Error ? err.message : '分析请求失败' });
     }
   }, [state.chapters, state.activeChapterId, state.selectedCharacterId, state.selectedLocation, state.activeProjectId, dispatch]);
 
   // --- Simple dispatches ---
-  const selectChapter = useCallback((id: string) => dispatch({ type: 'SELECT_CHAPTER', payload: id }), [dispatch]);
+  const selectChapter = useCallback((id: string) => {
+    dispatch({ type: 'SELECT_CHAPTER', payload: id });
+    // Load analysis history for newly selected chapter (Item 4)
+    if (state.activeProjectId) {
+      apiClient.getAnalysisHistory(state.activeProjectId, id).then(records => {
+        dispatch({ type: 'LOAD_ANALYSIS_HISTORY', payload: records });
+      }).catch(() => {});
+    }
+  }, [state.activeProjectId, dispatch]);
   const updateChapterTitle = useCallback((id: string, title: string) => dispatch({ type: 'UPDATE_CHAPTER_TITLE', payload: { id, title } }), [dispatch]);
   const updateChapterText = useCallback((id: string, text: string) => dispatch({ type: 'UPDATE_CHAPTER_TEXT', payload: { id, text } }), [dispatch]);
   const selectCharacter = useCallback((id: string) => dispatch({ type: 'SELECT_CHARACTER', payload: id }), [dispatch]);

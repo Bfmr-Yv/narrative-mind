@@ -31,6 +31,7 @@ from src.engines.world import WorldEngine, WorldQuery
 from src.consistency_guardian.guardian import ConsistencyGuardian, GuardianInput
 from src.orchestrator.router import Orchestrator, UserAction
 from src.project_manager import ProjectManager, ProjectSettings as PSettings
+from src.analysis_store import AnalysisStore
 from src.llm import LLMClient, CostTracker, get_config
 
 app = Flask(__name__, static_folder=None)
@@ -119,6 +120,9 @@ else:
     _PROJECTS_DIR = _PROJECT_ROOT / "projects"
 
 project_manager = ProjectManager(str(_PROJECTS_DIR))
+
+# 初始化分析历史存储
+analysis_store = AnalysisStore(str(_PROJECTS_DIR))
 
 
 # =========================================================================
@@ -228,6 +232,41 @@ def delete_chapter(project_id: str, chapter_id: str):
 
 
 # =========================================================================
+# Analysis history endpoints (Item 4)
+# =========================================================================
+
+
+@app.route('/api/projects/<project_id>/chapters/<chapter_id>/analysis', methods=['GET'])
+def get_analysis_history(project_id: str, chapter_id: str):
+    """获取章节的分析历史列表（不含完整 response body）"""
+    history = analysis_store.get_history(project_id, chapter_id)
+    return jsonify(history)
+
+
+@app.route('/api/projects/<project_id>/chapters/<chapter_id>/analysis/<analysis_id>', methods=['GET'])
+def get_analysis_detail(project_id: str, chapter_id: str, analysis_id: str):
+    """获取单条分析详情（含完整 response body）"""
+    detail = analysis_store.get_detail(project_id, chapter_id, analysis_id)
+    if detail is None:
+        return jsonify({'error': 'Analysis record not found'}), 404
+    return jsonify(detail)
+
+
+@app.route('/api/projects/<project_id>/chapters/<chapter_id>/analysis', methods=['POST'])
+def save_analysis_record(project_id: str, chapter_id: str):
+    """保存分析记录"""
+    data = request.json or {}
+    record = analysis_store.save(
+        project_id=project_id,
+        chapter_id=chapter_id,
+        character_id=data.get('character_id', ''),
+        location=data.get('location', ''),
+        response=data.get('response', {}),
+    )
+    return jsonify(_to_json(record)), 201
+
+
+# =========================================================================
 # Existing endpoints (with project support)
 # =========================================================================
 
@@ -290,6 +329,21 @@ def execute_orchestrator():
     result = orchestrator.execute(action)
     serialized = _to_json(result)
 
+    # 自动持久化分析结果（Item 4）
+    if project_id:
+        chapter_id = data.get('payload', {}).get('chapter_id', '')
+        if chapter_id:
+            try:
+                analysis_store.save(
+                    project_id=project_id,
+                    chapter_id=chapter_id,
+                    character_id=data.get('payload', {}).get('character_id', ''),
+                    location=data.get('payload', {}).get('location', ''),
+                    response=serialized,
+                )
+            except Exception:
+                pass  # 持久化失败不影响主流程
+
     # 诊断日志
     cr = serialized.get('engine_results', {}).get('character_engine', {})
     print(f"[API] analyze: character={data.get('payload', {}).get('character_id', '?')}, "
@@ -311,6 +365,7 @@ def health_check():
         'llm_model': llm_config.model,
         **cost_tracker.status(),
         'enriched_slices_count': _enricher.dynamic_slice_count,
+        'analysis_records': analysis_store.total_count(),
     })
 
 

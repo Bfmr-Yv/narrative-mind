@@ -7,6 +7,8 @@ import type {
   ProjectMeta,
   ProjectSettings,
   Chapter,
+  AnalysisRecord,
+  AnalysisRecordFull,
 } from '../types';
 
 const API_BASE_URL = '/api';
@@ -96,6 +98,26 @@ class ApiClient {
 
   async deleteChapter(projectId: string, chapterId: string): Promise<void> {
     return this.fetch(`/projects/${projectId}/chapters/${chapterId}`, { method: 'DELETE' });
+  }
+
+  // ---- Analysis History (Item 4) ----
+
+  async getAnalysisHistory(projectId: string, chapterId: string): Promise<AnalysisRecord[]> {
+    return this.fetch(`/projects/${projectId}/chapters/${chapterId}/analysis`);
+  }
+
+  async getAnalysisDetail(projectId: string, chapterId: string, analysisId: string): Promise<AnalysisRecordFull> {
+    return this.fetch(`/projects/${projectId}/chapters/${chapterId}/analysis/${analysisId}`);
+  }
+
+  async saveAnalysis(projectId: string, chapterId: string, record: {
+    character_id: string;
+    location: string;
+    response: OrchestratorResponse;
+  }): Promise<AnalysisRecord> {
+    return this.fetch(`/projects/${projectId}/chapters/${chapterId}/analysis`, {
+      method: 'POST', body: JSON.stringify(record),
+    });
   }
 }
 
