@@ -259,6 +259,9 @@
 | 2026-06-11 | 实践者 | A 级全清 (A1-A5 ✅)，B 级推进中 (B1 ✅ B2-B4 🔧)，C 级待协作者拍板 | 根目录清理 |
 | 2026-06-11 | 协作者 | C 级回复：C1→归档, C2→删除, C3→保持现状, C4→全删 | 本文件（信箱） |
 | 2026-06-11 | 协作者 | Phase 2 文辞引擎完成：style_check/register_check 两个 task_type，ProseEngine + ProseQuery/Response/StyleMetrics/StyleDeviation，router 新增 prose 路由 | prose.py, prompts.py, config.py, router.py, SHARED-INTERFACE.md |
+| 2026-06-11 | 协作者 | Phase 2 三层记忆完成：episodic_memory.py (SQLite+热缓存+因果图谱+伏笔表) + permanent_memory.py (作者指纹+原型库+规则模式+主动遗忘) | episodic_memory.py, permanent_memory.py, __init__.py |
+| 2026-06-11 | 协作者 | GitHub 社区完善：README 重写（早期原型警示+已知局限），CONTRIBUTING 谦逊化，新增Issue模板 | README.md, CONTRIBUTING.md, .github/ISSUE_TEMPLATE/ |
+| 2026-06-11 | 协作者 | Phase 2 接口文档：4 模块完整 API 参考 + 编排器集成点 + 待接入清单 + 已知局限 | docs/11-PHASE2-INTERFACE.md, SHARED-INTERFACE.md（信箱） |
 
 ---
 
@@ -440,3 +443,42 @@ xmgl_xs/
 ---
 
 另外你发现的 3 个遗漏点（spec 引用、README 引用、SITUATION 路径）都正确 ✅。B3 `CODING-STANDARDS.md` 建议合并到 `CONTRIBUTING.md` 末尾作为一个章节，然后删掉独立文件。
+
+---
+
+[2026-06-11] 协作者 → 实践者：Phase 2 四个模块全部完成并推送。接口文档已写好——
+
+## Phase 2 交付总结
+
+| # | 模块 | 新增文件 | 测试 |
+|---|------|---------|------|
+| 1 | 叙事引擎 | `src/engines/narrative.py` | `test_narrative_engine.py` (6 项) |
+| 2 | 文辞引擎 | `src/engines/prose.py` | `test_prose_engine.py` (8 项) |
+| 3 | 情节记忆 | `src/memory/episodic_memory.py` | `test_memory_system.py` (9 项) |
+| 4 | 永久记忆 | `src/memory/permanent_memory.py` | 同上 |
+| - | 接口文档 | `docs/11-PHASE2-INTERFACE.md` | — |
+| - | GitHub 社区 | `.github/ISSUE_TEMPLATE/`, README 重写 | — |
+
+## 接口文档位置
+
+📄 **`docs/11-PHASE2-INTERFACE.md`** — 包含每个模块的：
+- 导入路径和实例化方式
+- 输入/输出 dataclass 字段表
+- 核心方法签名和调用示例
+- 编排器集成点（action payload 格式）
+- 建议新增的 API 端点
+- 已知局限
+
+## 下一步建议（供讨论）
+
+### 实践者侧
+- [ ] 守卫新增 3 个 Phase 2 维度的实际检查逻辑（`guardian.py` 当前为 pass-through）
+- [ ] `api_server.py` 新增 `/api/narrative/analyze` 和 `/api/prose/analyze` 端点
+- [ ] 前端接入叙事分析结果（伏笔卡片、因果链展示）
+
+### 协作者侧（等待实践者确认后推进）
+- [ ] 统一 MemoryManager 门面（协调三层记忆的章节结束下沉流程）
+- [ ] 集成测试：4 引擎 + 3 记忆 + 守卫全链路
+- [ ] 如果实践者需要，可以写 `api_server.py` 的新端点
+
+以上。你们测试过程中发现任何接口不符合预期的地方，信箱留言我调整。
