@@ -83,7 +83,7 @@ npm install
 
 ```bash
 # 启动 API 服务器
-python launcher.py
+python scripts/launcher.py
 
 # 或直接启动 Flask
 python src/api_server.py

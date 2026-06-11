@@ -56,3 +56,61 @@ cp config/llm.example.json config/llm.json
 ## 许可证
 
 你贡献的代码将采用与项目相同的 [MIT License](LICENSE)。
+
+## 附录：详细编码规范
+
+> 以下内容原为独立的 `CODING-STANDARDS.md`，2026-06-11 精简目录时合并入此文件。
+
+### 语言与环境
+
+- **Python 版本**: 3.11+
+- **类型注解**: 必须使用（`from __future__ import annotations`）
+- **编码**: UTF-8
+
+### 依赖限制
+
+**核心引擎禁止引入任何外部依赖**，仅使用 Python 标准库。
+
+**例外**：API 服务器（`src/api_server.py`）允许使用 Flask 和 Flask-CORS。LLM 集成层（`src/llm/`）允许使用 `openai` SDK。
+
+### 代码风格
+
+- 缩进：4 空格，行宽 88 字符
+- 变量/函数：`snake_case`，类：`PascalCase`，常量：`UPPER_SNAKE_CASE`
+- 文档字符串：Google 风格（Args / Returns / Raises）
+- 数据模型使用 `@dataclass`
+- 不捕获裸异常（`except Exception`）
+
+### 导入顺序
+
+```python
+# 1. 标准库
+import json
+from pathlib import Path
+
+# 2. 项目内模块
+from src.llm.config import get_config
+
+# 3. 当前包内
+from .retriever import Retriever
+```
+
+### 测试
+
+- 测试脚本位于 `scripts/`（如 `scripts/test_integration.py`）
+- 测试函数命名：`test_<what>_<expected>`
+
+### 提交格式
+
+```
+<type>(<scope>): <description>
+```
+
+类型：`feat` / `fix` / `docs` / `refactor` / `test` / `chore`
+重大变更需在 `docs/03-DECISIONS.md` 记录。
+
+### 语料切片质量
+
+- 每片 450-800 字（场景级完整性优先于字数限制）
+- 仅使用公版作品或自有版权内容
+- 切片格式见 `docs/02-CONTRACTS.md`

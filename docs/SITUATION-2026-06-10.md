@@ -165,9 +165,17 @@ chore: 简短描述
 3. **共享文件**（`prompts.py`、`config.py`、`router.py`）：修改前拉取最新，追加不覆盖。
 4. **提交频率**：每完成一个独立功能就提交，减少冲突。
 5. **推送**：需要先设代理 `HTTPS_PROXY=http://127.0.0.1:10808`
+6. **对接媒介**：`docs/SHARED-INTERFACE.md` — 命名注册表 + API 端点对照 + 数据流图 + 信箱。修改共享文件前后都要读/写此文档。
 
 ## 当前待提交
 
-- `SITUATION-2026-06-10.md`（本文件）
+（2026-06-11 目录精简后）：
+- 根目录从 26 条目 → 11 条目
+- `docs/SITUATION-2026-06-10.md`（本文件）
+- `docs/SHARED-INTERFACE.md`（对接媒介）
+- `CONTRIBUTING.md`（已合并 CODING-STANDARDS.md）
+- `CLAUDE.md`（更新目录结构和引用）
+- `NarrativeMind.spec`（修复 launcher.py 路径）
+- `README.md`（修复 launcher.py 路径）
 
 建议明天先用 `git status` 确认工作区干净后再开始。
