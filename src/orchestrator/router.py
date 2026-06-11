@@ -19,6 +19,7 @@ from ..engines.character import CharacterEngine, CharacterQuery
 from ..engines.world import WorldEngine, WorldQuery
 from ..engines.narrative import NarrativeEngine, NarrativeQuery
 from ..engines.prose import ProseEngine, ProseQuery
+from ..engines.theme import ThemeEngine, ThemeQuery
 from ..consistency_guardian.guardian import (
     ConsistencyGuardian,
     GuardianInput,
@@ -67,7 +68,8 @@ ROUTE_MAP = {
     "finalize": ["character_engine", "world_engine"],
     "narrative": ["narrative_engine"],  # Phase 2
     "prose": ["prose_engine"],  # Phase 2
-    "full_analyze": ["character_engine", "world_engine", "narrative_engine", "prose_engine"],  # Phase 2
+    "theme": ["theme_engine"],  # Phase 3
+    "full_analyze": ["character_engine", "world_engine", "narrative_engine", "prose_engine", "theme_engine"],  # Phase 3
 }
 
 
@@ -88,6 +90,7 @@ class Orchestrator:
         world_engine: Optional[WorldEngine] = None,
         narrative_engine: Optional[NarrativeEngine] = None,
         prose_engine: Optional[ProseEngine] = None,
+        theme_engine: Optional[ThemeEngine] = None,
         guardian: Optional[ConsistencyGuardian] = None,
         enricher: Optional[object] = None,
         retriever: Optional[object] = None,
@@ -108,6 +111,7 @@ class Orchestrator:
         self._world_engine = world_engine
         self._narrative_engine = narrative_engine
         self._prose_engine = prose_engine
+        self._theme_engine = theme_engine
         self._guardian = guardian or ConsistencyGuardian()
         self._enricher = enricher
         self._retriever = retriever
@@ -209,6 +213,10 @@ class Orchestrator:
                     result = self._execute_prose_engine(action)
                     results["prose_engine"] = result
 
+                elif engine_name == "theme_engine" and self._theme_engine:
+                    result = self._execute_theme_engine(action)
+                    results["theme_engine"] = result
+
             except Exception as e:
                 # 降级策略：记录错误，继续执行
                 results[engine_name] = {"error": str(e)}
@@ -306,6 +314,29 @@ class Orchestrator:
         )
 
         return self._prose_engine.analyze(query)
+
+    def _execute_theme_engine(self, action: UserAction) -> Any:
+        """执行主题引擎（Phase 3）
+
+        Args:
+            action: 用户操作
+
+        Returns:
+            主题引擎结果
+        """
+        if not self._theme_engine:
+            return None
+
+        payload = action.payload
+
+        query = ThemeQuery(
+            chapter_text=payload.get("chapter_text", ""),
+            chapter_id=payload.get("chapter_id", ""),
+            previous_themes=payload.get("previous_themes", []),
+            author_hints=payload.get("author_hints", []),
+        )
+
+        return self._theme_engine.analyze(query)
 
     def _run_guardian(self, engine_results: dict[str, Any]) -> GuardianOutput:
         """运行一致性守卫

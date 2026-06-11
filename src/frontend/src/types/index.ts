@@ -11,6 +11,8 @@ export interface OrchestratorResponse {
   engine_results: {
     character_engine?: CharacterAnalysis;
     world_engine?: WorldValidation;
+    narrative_engine?: NarrativeAnalysis;
+    prose_engine?: ProseAnalysis;
   };
   guardian_output?: GuardianOutput;
   extracted_entities?: ExtractedEntities;
@@ -74,6 +76,60 @@ export interface Conflict {
   level: 'info' | 'warn' | 'critical';
   detail: string;
   suggestion?: string;
+}
+
+// Phase 2 — Narrative & Prose analysis
+
+export interface NarrativeAnalysis {
+  foreshadowings: ForeshadowingItem[];
+  causal_links: CausalLinkItem[];
+  unresolved_foreshadowings: ForeshadowingItem[];
+  narrative_issues: string[];
+  event_prediction: string;
+  confidence: number;
+  needs_human_review: boolean;
+}
+
+export interface ForeshadowingItem {
+  foreshadow_id: string;
+  chapter_id: string;
+  description: string;
+  hint_text: string;
+  category: string;
+  status: string;
+  resolved_in: string | null;
+  related_characters: string[];
+  confidence: number;
+}
+
+export interface CausalLinkItem {
+  cause: string;
+  effect: string;
+  strength: number;
+  description: string;
+}
+
+export interface ProseAnalysis {
+  style_metrics: {
+    avg_sentence_length: number;
+    dialogue_ratio: number;
+    vocabulary_richness: number;
+    register_level: string;
+    rhetoric_density: number;
+  } | null;
+  deviations: StyleDeviation[];
+  register_consistency: number;
+  character_voice_issues: string[];
+  confidence: number;
+  needs_human_review: boolean;
+}
+
+export interface StyleDeviation {
+  paragraph_index: number;
+  snippet: string;
+  deviation_type: string;
+  severity: number;
+  suggestion: string;
 }
 
 export interface ExtractedEntities {
@@ -166,6 +222,7 @@ export interface AppState {
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
   showProjectSettings: boolean;
+  deepAnalysis: boolean;
   costData: {
     monthly_spend: number;
     monthly_budget: number;
@@ -189,6 +246,7 @@ export type AppAction =
   | { type: 'ADD_PROJECT'; payload: ProjectMeta }
   | { type: 'REMOVE_PROJECT'; payload: string }
   | { type: 'TOGGLE_PROJECT_SETTINGS' }
+  | { type: 'TOGGLE_DEEP_ANALYSIS' }
   | { type: 'RETURN_TO_DASHBOARD' }
   | { type: 'SET_CHAPTERS'; payload: Chapter[] }
   | { type: 'ADD_CHAPTER'; payload: Chapter }

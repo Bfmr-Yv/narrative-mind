@@ -28,6 +28,7 @@ const initialState: AppState = {
   leftPanelOpen: true,
   rightPanelOpen: true,
   showProjectSettings: false,
+  deepAnalysis: false,
   costData: {
     monthly_spend: 0,
     monthly_budget: 20,
@@ -104,6 +105,9 @@ function reducer(state: AppState, action: AppAction): AppState {
 
     case 'TOGGLE_PROJECT_SETTINGS':
       return { ...state, showProjectSettings: !state.showProjectSettings };
+
+    case 'TOGGLE_DEEP_ANALYSIS':
+      return { ...state, deepAnalysis: !state.deepAnalysis };
 
     case 'RETURN_TO_DASHBOARD':
       return { ...initialState, projects: state.projects, apiConnected: state.apiConnected };
@@ -369,7 +373,7 @@ export function useAppActions() {
     dispatch({ type: 'ANALYSIS_START' });
     try {
       const result = await apiClient.executeOrchestrator({
-        type: 'analyze',
+        type: state.deepAnalysis ? 'full_analyze' : 'analyze',
         payload: {
           character_id: state.selectedCharacterId,
           scene_text: chapter.text,
@@ -391,7 +395,7 @@ export function useAppActions() {
     } catch (err) {
       dispatch({ type: 'ANALYSIS_FAILURE', payload: err instanceof Error ? err.message : '分析请求失败' });
     }
-  }, [state.chapters, state.activeChapterId, state.selectedCharacterId, state.selectedLocation, state.activeProjectId, dispatch]);
+  }, [state.chapters, state.activeChapterId, state.selectedCharacterId, state.selectedLocation, state.activeProjectId, state.deepAnalysis, dispatch]);
 
   const selectChapter = useCallback((id: string) => {
     dispatch({ type: 'SELECT_CHAPTER', payload: id });

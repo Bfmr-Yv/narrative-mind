@@ -52,6 +52,8 @@ ESTIMATED_COST_PER_CALL = {
     # Phase 2 — 文辞引擎
     "style_check":      0.00093,  # ~1000 in + ~300 out
     "register_check":   0.00093,  # ~1000 in + ~300 out
+    # Phase 3 — 主题引擎
+    "theme_extract":    0.00108,  # ~1200 in + ~400 out
 }
 
 # API 超时（留 5s 给编排器的 30s fallback）
@@ -111,6 +113,8 @@ TIER_CONFIG: dict[str, TierRoute] = {
     # Phase 2 — 文辞引擎
     "style_check":       TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.2),
     "register_check":    TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.3),
+    # Phase 3 — 主题引擎
+    "theme_extract":     TierRoute(model=DEFAULT_MODEL, max_tokens=768,  temperature=0.4),
 }
 
 # Tier 2+ 任务（预算紧张时优先保留，Tier 1 类任务先降级）

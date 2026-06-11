@@ -32,6 +32,10 @@ from src.corpus_anchor.enricher import Enricher
 from src.corpus_anchor.refiner import Refiner
 from src.engines.character import CharacterEngine, CharacterQuery
 from src.engines.world import WorldEngine, WorldQuery
+from src.engines.narrative import NarrativeEngine, NarrativeQuery
+from src.engines.prose import ProseEngine, ProseQuery
+from src.memory.episodic_memory import EpisodicMemory
+from src.memory.permanent_memory import PermanentMemory
 from src.consistency_guardian.guardian import ConsistencyGuardian, GuardianInput
 from src.orchestrator.router import Orchestrator, UserAction
 from src.project_manager import ProjectManager, ProjectSettings as PSettings
@@ -114,12 +118,18 @@ world_engine.load_character_power_levels({
 
 guardian = ConsistencyGuardian()
 
+# Phase 2 引擎 — 叙事 + 文辞
+narrative_engine = NarrativeEngine(llm_client=llm_client)
+prose_engine = ProseEngine(llm_client=llm_client)
+
 # 初始化静态语料反哺器（Item 1: Refiner）
 refiner = Refiner(slice_manager=slice_manager)
 
 orchestrator = Orchestrator(
     character_engine=character_engine,
     world_engine=world_engine,
+    narrative_engine=narrative_engine,
+    prose_engine=prose_engine,
     guardian=guardian,
     enricher=_enricher,
     retriever=retriever,
@@ -136,6 +146,10 @@ project_manager = ProjectManager(str(_PROJECTS_DIR))
 
 # 初始化分析历史存储
 analysis_store = AnalysisStore(str(_PROJECTS_DIR))
+
+# Phase 2 记忆 — 情节记忆 + 永久记忆
+episodic_memory = EpisodicMemory(db_path=str(_PROJECTS_DIR / "memory" / "episodic.db"))
+permanent_memory = PermanentMemory(db_path=str(_PROJECTS_DIR / "memory" / "permanent.db"))
 
 
 # =========================================================================
@@ -570,6 +584,33 @@ def validate_world():
     return jsonify(_to_json(result))
 
 
+@app.route('/api/narrative/analyze', methods=['POST'])
+def analyze_narrative():
+    """叙事分析 — 伏笔检测 + 因果链 + 情节推演"""
+    data = request.json
+    query = NarrativeQuery(
+        chapter_text=data.get('chapter_text', ''),
+        chapter_id=data.get('chapter_id', ''),
+        previous_chapters=data.get('previous_chapters', []),
+        known_foreshadowings=data.get('known_foreshadowings', []),
+    )
+    result = narrative_engine.analyze(query)
+    return jsonify(_to_json(result))
+
+
+@app.route('/api/prose/analyze', methods=['POST'])
+def analyze_prose():
+    """文风分析 — 风格指标 + 语域一致性 + 角色用语"""
+    data = request.json
+    query = ProseQuery(
+        text=data.get('chapter_text', ''),
+        baseline_texts=data.get('baseline_texts', []),
+        chapter_id=data.get('chapter_id', ''),
+    )
+    result = prose_engine.analyze(query)
+    return jsonify(_to_json(result))
+
+
 @app.route('/api/guardian/check', methods=['POST'])
 def check_consistency():
     """一致性检查"""
@@ -663,6 +704,16 @@ def health_check():
         'enriched_slices_count': _enricher.dynamic_slice_count,
         'analysis_records': analysis_store.total_count(),
         'refinements_count': refiner.refinement_count,
+        'engines': {
+            'character': True,
+            'world': True,
+            'narrative': narrative_engine is not None,
+            'prose': prose_engine is not None,
+        },
+        'memory': {
+            'episodic_entries': episodic_memory.get_stats().total_entries,
+            'permanent_ready': permanent_memory.get_fingerprint() is not None,
+        },
     })
 
 

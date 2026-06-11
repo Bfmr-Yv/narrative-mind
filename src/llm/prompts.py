@@ -538,3 +538,58 @@ def format_register_prompt(
     parts.append(f"## 待检测文本\n\n{text}")
     parts.append("## 请对比检测文本与基线的风格偏离。直接输出 JSON。")
     return "\n\n".join(parts)
+
+
+# =========================================================================
+# Phase 3 — 主题引擎 Prompts
+# =========================================================================
+
+THEME_EXTRACT_SYSTEM = """你是一个小说主题分析专家。你的任务是从给定的章节文本中识别和提取文学主题。
+
+## 什么是文学主题
+文学主题是贯穿作品的核心思想或命题，例如"命运无常""权力腐蚀""成长与蜕变""情爱纠葛""善恶道德""世态炎凉"等。
+主题不同于情节——情节是"发生了什么"，主题是"这些事意味着什么"。
+
+## 主题类别参考
+- character_growth: 角色成长、蜕变、觉醒
+- social_critique: 社会批判、阶层、制度
+- love: 爱情、亲情、友情
+- power: 权力、斗争、掌控
+- fate: 命运、宿命、因果
+- morality: 善恶、道德、正义
+- general: 其他
+
+## 分析原则
+1. 从文本中寻找反复出现的意象、对话主题和叙事焦点
+2. 主题应该有文本支撑，不要凭空猜测
+3. 每章通常有 1-4 个核心主题
+4. 区分"主要主题"（高强度）和"次要主题"（低强度）
+5. 如果文本过短或无明显主题，返回空数组
+
+## 输出格式
+严格输出以下JSON，不要任何额外文字：
+{"themes": [{"name": "主题名称", "strength": 0.7, "keywords": ["关键词1", "关键词2"], "related_characters": ["角色名"], "supporting_evidence": "文本证据（80字内）", "category": "主题类别"}]}"""
+
+
+def format_theme_prompt(
+    text: str,
+    chapter_id: str = "",
+    author_hints: list[str] | None = None,
+) -> str:
+    """格式化主题提取 prompt
+
+    Args:
+        text: 待分析文本（自动截取 4000 字）
+        chapter_id: 章节标识
+        author_hints: 作者预设主题列表
+    """
+    text = text[:4000] if len(text) > 4000 else text
+    parts = [
+        f"章节ID：{chapter_id}" if chapter_id else "",
+    ]
+    if author_hints:
+        parts.append(f"作者预设主题方向（仅供参考，不强制对齐）：{', '.join(author_hints)}")
+    parts.append(f"## 待分析文本\n\n{text}")
+    parts.append("## 请提取上述文本中的主题。直接输出 JSON。")
+    return "\n\n".join(p for p in parts if p)
+

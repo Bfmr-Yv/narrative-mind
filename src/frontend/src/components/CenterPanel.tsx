@@ -188,6 +188,15 @@ const CenterPanel: React.FC = () => {
           onChange={handleFileChange}
         />
 
+        <label className="deep-toggle" title="启用叙事+文辞引擎（消耗更多 LLM 额度）">
+          <input
+            type="checkbox"
+            checked={state.deepAnalysis}
+            onChange={() => dispatch({ type: 'TOGGLE_DEEP_ANALYSIS' })}
+          />
+          <span className="deep-toggle-label">深度</span>
+        </label>
+
         <button
           className="analyze-btn"
           onClick={handleAnalyze}
