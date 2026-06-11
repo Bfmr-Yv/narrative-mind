@@ -49,6 +49,9 @@ ESTIMATED_COST_PER_CALL = {
     "causal_extract":    0.00108,  # ~1200 in + ~400 out
     "resolution_check":  0.00072,  # ~1000 in + ~200 out
     "event_predict":     0.00121,  # ~1200 in + ~500 out
+    # Phase 2 — 文辞引擎
+    "style_check":      0.00093,  # ~1000 in + ~300 out
+    "register_check":   0.00093,  # ~1000 in + ~300 out
 }
 
 # API 超时（留 5s 给编排器的 30s fallback）
@@ -105,6 +108,9 @@ TIER_CONFIG: dict[str, TierRoute] = {
     "causal_extract":    TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.2),
     "resolution_check":  TierRoute(model=DEFAULT_MODEL, max_tokens=256,  temperature=0.2),
     "event_predict":     TierRoute(model=DEFAULT_MODEL, max_tokens=768,  temperature=0.4),
+    # Phase 2 — 文辞引擎
+    "style_check":       TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.2),
+    "register_check":    TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.3),
 }
 
 # Tier 2+ 任务（预算紧张时优先保留，Tier 1 类任务先降级）

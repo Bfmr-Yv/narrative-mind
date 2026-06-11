@@ -157,10 +157,12 @@ try:
         print(f"    - {entry.key}: {entry.data}")
     
     print("\n" + "=" * 60)
-    print("Integration Test completed!")
+    print("[PASS] Integration test completed!")
     print("=" * 60)
-    
+    sys.exit(0)
+
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"[FAIL] {e}")
     import traceback
     traceback.print_exc()
+    sys.exit(1)

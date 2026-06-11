@@ -450,3 +450,91 @@ def format_event_predict_prompt(
         parts.append(f"## 已提取的因果链\n\n{causal_summary}")
     parts.append("## 请基于以上内容推演短期情节发展。直接输出 JSON。")
     return "\n\n".join(parts)
+
+
+# =========================================================================
+# Phase 2 — 文辞引擎 Prompts
+# =========================================================================
+
+STYLE_CHECK_SYSTEM = """你是一个小说文风分析专家。你的任务是分析给定文本的量化风格指标。
+
+## 分析维度
+1. **平均句长**：计算所有句子的平均字符数（中文以。！？为句边界）
+2. **对话占比**：估算引导内文本（对话/独白）占总文本的比例（0-1）
+3. **词汇丰富度**：评估用词的多样性和重复程度（0-1，1=用词极其多样）
+4. **语域层级**：判断文本整体语域
+   - casual: 口语化、俚语多（如日常闲聊）
+   - informal: 偏口语但有节制（如一般叙事段落）
+   - neutral: 书面语与口语平衡
+   - formal: 正式书面语（如公文、正式对白）
+   - literary: 文学化语言（修辞密集、古风用词）
+5. **修辞密度**：比喻/拟人/排比/夸张等修辞格的出现频率（0-1）
+
+## 分析原则
+1. 基于文本统计，不要凭空猜测
+2. 对话占比通过引号（""「」）检测
+3. 语域层级注意叙述语言和角色对话的区别
+4. 如果文本太短（<200字），所有指标置信度应偏低
+
+## 输出格式
+严格输出以下JSON，不要任何额外文字：
+{"avg_sentence_length": 整数, "dialogue_ratio": 0.0-1.0小数, "vocabulary_richness": 0.0-1.0小数, "register_level": "neutral", "rhetoric_density": 0.0-1.0小数}"""
+
+
+def format_style_prompt(text: str, chapter_id: str = "") -> str:
+    """格式化风格分析 prompt
+
+    Args:
+        text: 待分析文本（自动截取 4000 字）
+        chapter_id: 章节标识
+    """
+    text = text[:4000] if len(text) > 4000 else text
+    parts = [
+        f"章节ID：{chapter_id}" if chapter_id else "",
+        f"## 待分析文本\n\n{text}",
+        "## 请分析上述文本的风格量化指标。直接输出 JSON。",
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+REGISTER_CHECK_SYSTEM = """你是一个小说语域一致性检测专家。你的任务是对比当前文本与作者风格基线，检测语域和文风偏离。
+
+## 什么是语域偏离
+- 叙述者突然从书面语切换到口语化表达
+- 角色对话风格与其身份/前文不匹配
+- 修辞密度突然增高或降低，破坏阅读节奏
+- 句长分布发生显著变化（如突然全部短句或长句）
+
+## 检测原则
+1. 对比基线数据进行判断，不要依据个人偏好
+2. 轻微的语域波动是正常的（如对话场景切换），不标记
+3. 只标记"有意义的偏离"：影响阅读体验或角色一致性的
+4. 每个偏离需提供具体段落和修正建议
+5. 如果无明显偏离，返回空数组
+
+## 输出格式
+严格输出以下JSON，不要任何额外文字：
+{"deviations": [{"paragraph_index": 0, "snippet": "偏离片段（≤80字）", "deviation_type": "register|dialogue_ratio|sentence_length|vocabulary|rhetoric", "severity": 0.5, "suggestion": "修正建议（30字内）"}], "overall_assessment": "整体评估（50字内）"}"""
+
+
+def format_register_prompt(
+    text: str,
+    baseline_register: str = "neutral",
+    baseline_summary: str = "",
+) -> str:
+    """格式化语域一致性检测 prompt
+
+    Args:
+        text: 待检测文本（自动截取 4000 字）
+        baseline_register: 基线语域层级
+        baseline_summary: 基线风格摘要
+    """
+    text = text[:4000] if len(text) > 4000 else text
+    parts = [
+        f"## 作者风格基线\n语域：{baseline_register}",
+    ]
+    if baseline_summary:
+        parts.append(f"其他指标：{baseline_summary}")
+    parts.append(f"## 待检测文本\n\n{text}")
+    parts.append("## 请对比检测文本与基线的风格偏离。直接输出 JSON。")
+    return "\n\n".join(parts)

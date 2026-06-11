@@ -11,6 +11,7 @@ const CenterPanel: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const activeChapter = state.chapters.find(ch => ch.id === state.activeChapterId);
   const chapterText = activeChapter?.text ?? '';
@@ -32,6 +33,7 @@ const CenterPanel: React.FC = () => {
   useEffect(() => {
     if (!activeChapterId) return;
     setSaveStatus('unsaved');
+    setSaveError(null);
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
@@ -39,8 +41,10 @@ const CenterPanel: React.FC = () => {
       try {
         await saveChapter(activeChapterId, chapterTitle, chapterText);
         setSaveStatus('saved');
-      } catch {
+        setSaveError(null);
+      } catch (err) {
         setSaveStatus('unsaved');
+        setSaveError(err instanceof Error ? err.message : '保存失败，请检查网络连接');
       }
     }, AUTOSAVE_DELAY);
 
@@ -48,6 +52,19 @@ const CenterPanel: React.FC = () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [chapterText, chapterTitle, activeChapterId, saveChapter]);
+
+  const handleManualSave = useCallback(async () => {
+    if (!activeChapterId) return;
+    setSaveStatus('saving');
+    setSaveError(null);
+    try {
+      await saveChapter(activeChapterId, chapterTitle, chapterText);
+      setSaveStatus('saved');
+    } catch (err) {
+      setSaveStatus('unsaved');
+      setSaveError(err instanceof Error ? err.message : '保存失败');
+    }
+  }, [activeChapterId, chapterTitle, chapterText, saveChapter]);
 
   // Gather dispatch helpers inline (avoids circular dependency with AppContext)
   const updateTitle = useCallback(
@@ -73,7 +90,9 @@ const CenterPanel: React.FC = () => {
 
     // 分析前先保存当前内容
     if (activeChapterId) {
-      saveChapter(activeChapterId, chapterTitle, chapterText).catch(() => {});
+      saveChapter(activeChapterId, chapterTitle, chapterText).catch((err) => {
+        setSaveError(err instanceof Error ? err.message : '分析前保存失败');
+      });
     }
 
     runAnalysis();
@@ -187,14 +206,27 @@ const CenterPanel: React.FC = () => {
       </div>
 
       {/* Editor */}
-      <textarea
-        ref={textareaRef}
-        className="editor-area"
-        value={chapterText}
-        onChange={e => updateText(e.target.value)}
-        placeholder="开始书写你的故事..."
-        spellCheck={false}
-      />
+      <div className="editor-wrapper">
+        <textarea
+          ref={textareaRef}
+          className="editor-area"
+          value={chapterText}
+          onChange={e => updateText(e.target.value)}
+          placeholder="开始书写你的故事..."
+          spellCheck={false}
+          readOnly={state.isAnalyzing}
+        />
+
+        {/* Analyzing overlay */}
+        {state.isAnalyzing && (
+          <div className="analyzing-overlay">
+            <div className="analyzing-spinner">
+              <div className="spinner-ring" />
+              <span className="analyzing-text">正在分析章节文本...</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Status bar */}
       <div className="editor-status">
@@ -202,8 +234,14 @@ const CenterPanel: React.FC = () => {
         <span className={`status-saved ${saveStatus}`}>
           {saveStatus === 'saved' ? '已自动保存' : saveStatus === 'saving' ? '保存中...' : '未保存'}
         </span>
+        {saveStatus === 'unsaved' && (
+          <button className="save-btn" onClick={handleManualSave} title="手动保存">
+            &#128190; 保存
+          </button>
+        )}
         <span className={`status-dot ${state.apiConnected ? 'online' : 'offline'}`} />
       </div>
+      {saveError && <div className="save-error">{saveError}</div>}
     </div>
   );
 };

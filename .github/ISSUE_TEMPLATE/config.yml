@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 项目讨论
+    url: https://github.com/Bfmr-Yv/narrative-mind/discussions
+    about: 一般性问题、想法交流请使用 Discussions

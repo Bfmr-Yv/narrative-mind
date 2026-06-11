@@ -105,10 +105,13 @@ try:
             traceback.print_exc()
     
     print("\n" + "=" * 60)
-    print("Test completed!")
+    print("[PASS] World engine tests completed!")
     print("=" * 60)
-    
+    sys.exit(0)
+
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"[FAIL] {e}")
     import traceback
+    traceback.print_exc()
+    sys.exit(1)
     traceback.print_exc()

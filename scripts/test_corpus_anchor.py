@@ -131,5 +131,13 @@ def test_character_filter():
 
 
 if __name__ == "__main__":
-    test_basic_flow()
+    try:
+        test_basic_flow()
+        print("\n[PASS] All corpus anchor tests completed.")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n[FAIL] {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
     test_character_filter()

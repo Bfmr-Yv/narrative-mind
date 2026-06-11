@@ -27,10 +27,37 @@
 
 .muted { opacity: 0.5; }
 
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--success); }
+.dot.warn { background: var(--warning); }
+.dot.blocked { background: var(--danger); animation: dot-pulse 1.5s ease-in-out infinite; }
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.meltdown-badge {
+  padding: 0 0.35rem;
+  border-radius: 6px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.meltdown-normal { background: #1b5e20; color: #a5d6a7; }
+.meltdown-warning { background: #5d4037; color: #ffcc80; }
+.meltdown-restricted { background: #b71c1c; color: #ef9a9a; }
+.meltdown-blocked { background: #b71c1c; color: #fff; animation: badge-pulse 1s ease-in-out infinite; }
+
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 .api-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .api-dot.on { background: var(--success); }
 .api-dot.off { background: var(--danger); }
 
-@media (max-width: 500px) {
+@media (max-width: 600px) {
   .bottom-bar { padding: 0 0.4rem; font-size: 0.6rem; gap: 0.3rem; }
+  .meltdown-badge { display: none; }
 }

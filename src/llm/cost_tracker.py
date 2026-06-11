@@ -194,6 +194,7 @@ class CostTracker:
         return {
             "budget_remaining": self.remaining_budget(),
             "monthly_spend": round(self._log.total_spent, 4),
+            "monthly_budget": MONTHLY_BUDGET_USD,
             "call_count": self._log.call_count,
             "meltdown_level": meltdown_level,
             "by_task_type": dict(self._log.by_task_type),

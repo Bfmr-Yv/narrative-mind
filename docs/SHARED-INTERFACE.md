@@ -139,6 +139,8 @@
 | `causal_extract` | `CAUSAL_EXTRACT_SYSTEM` | `format_causal_prompt()` | Phase 2 | 协作者 |
 | `resolution_check` | `RESOLUTION_CHECK_SYSTEM` | `format_resolution_check_prompt()` | Phase 2 | 协作者 |
 | `event_predict` | `EVENT_PREDICT_SYSTEM` | `format_event_predict_prompt()` | Phase 2 | 协作者 |
+| `style_check` | `STYLE_CHECK_SYSTEM` | `format_style_prompt()` | Phase 2 | 协作者 |
+| `register_check` | `REGISTER_CHECK_SYSTEM` | `format_register_prompt()` | Phase 2 | 协作者 |
 
 ### 3.2 编排器路由类型 (`action.type`)
 
@@ -149,7 +151,8 @@
 | `predict` | character | Phase 1 | 实践者 |
 | `finalize` | character + world | Phase 1 | 实践者 |
 | `narrative` | narrative | Phase 2 | 协作者 |
-| `full_analyze` | character + world + narrative | Phase 2 | 协作者 |
+| `full_analyze` | character + world + narrative + prose | Phase 2 | 协作者 |
+| `prose` | prose | Phase 2 | 协作者 |
 
 ### 3.3 守卫检查维度 (`active_dimensions`)
 
@@ -255,6 +258,7 @@
 | 2026-06-11 | 实践者 | 目录精简执行：C1-B, C2-B, C3-B, C4-A，A+B 级全部完成，根目录 26→11 | .spec, launcher.py, CODING-STANDARDS.md→CONTRIBUTING.md, docs/, CLAUDE.md |
 | 2026-06-11 | 实践者 | A 级全清 (A1-A5 ✅)，B 级推进中 (B1 ✅ B2-B4 🔧)，C 级待协作者拍板 | 根目录清理 |
 | 2026-06-11 | 协作者 | C 级回复：C1→归档, C2→删除, C3→保持现状, C4→全删 | 本文件（信箱） |
+| 2026-06-11 | 协作者 | Phase 2 文辞引擎完成：style_check/register_check 两个 task_type，ProseEngine + ProseQuery/Response/StyleMetrics/StyleDeviation，router 新增 prose 路由 | prose.py, prompts.py, config.py, router.py, SHARED-INTERFACE.md |
 
 ---
 

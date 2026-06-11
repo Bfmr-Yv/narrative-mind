@@ -291,6 +291,21 @@ if __name__ == "__main__":
     test_event_prediction()
     test_foreshadowing_registry()
 
-    print("\n" + "=" * 60)
-    print("[ALL PASS] Narrative Engine test suite complete!")
-    print("=" * 60)
+if __name__ == "__main__":
+    try:
+        test_foreshadow_keyword_fallback()
+        test_causal_keyword_fallback()
+        test_cross_chapter_resolution()
+        test_narrative_issues()
+        test_event_prediction()
+        test_foreshadowing_registry()
+
+        print("\n" + "=" * 60)
+        print("[ALL PASS] Narrative Engine test suite complete!")
+        print("=" * 60)
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n[FAIL] {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

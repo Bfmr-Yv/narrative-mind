@@ -47,11 +47,44 @@ const TabAnalysis: React.FC = () => {
   const a = state.currentAnalysis;
   const [infoView, setInfoView] = useState<{ type: 'prediction' } | { type: 'character'; name: string } | { type: 'location'; name: string }>({ type: 'prediction' });
 
+  // Skeleton loading during analysis
+  if (state.isAnalyzing) return (
+    <div className="tab-analysis">
+      <div className="skeleton-hero">
+        <div className="skeleton-bar w-30" />
+        <div className="skeleton-text" />
+        <div className="skeleton-text short" />
+        <div className="skeleton-text short" />
+      </div>
+      <div className="skeleton-section">
+        <div className="skeleton-bar w-20" />
+        <div className="skeleton-pad"><div className="skeleton-bar pad" /><div className="skeleton-bar pad" /><div className="skeleton-bar pad" /></div>
+      </div>
+      <div className="skeleton-section">
+        <div className="skeleton-bar w-25" />
+        <div className="skeleton-text" />
+        <div className="skeleton-text short" />
+      </div>
+    </div>
+  );
+
   if (!a) return (
     <div className="empty-state">
       <div className="empty-icon">&#x1f50d;</div>
       <p>暂无分析结果</p>
       <p className="empty-hint">在编辑器输入文本后点击工具栏「分析」按钮</p>
+    </div>
+  );
+
+  // Error state
+  if (state.analysisError) return (
+    <div className="tab-analysis">
+      <div className="scan-error" style={{ marginBottom: '0.5rem' }}>
+        &#x26a0;&#xfe0f; {state.analysisError}
+      </div>
+      <button className="scan-btn" onClick={() => window.location.reload()}>
+        重试分析
+      </button>
     </div>
   );
 

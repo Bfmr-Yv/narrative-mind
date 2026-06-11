@@ -159,8 +159,6 @@ export interface AppState {
   currentAnalysis: OrchestratorResponse | null;
   analysisHistory: AnalysisHistoryEntry[];
   isAnalyzing: boolean;
-  padLoading: boolean;
-  padCharacterId: string;
   analysisError: string | null;
   activeRightTab: RightTab;
   compareSlotA: AnalysisHistoryEntry | null;
@@ -168,7 +166,15 @@ export interface AppState {
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
   showProjectSettings: boolean;
-  costData: { currentMonth: number; monthlyBudget: number; breakdown: { category: string; cost: number }[] };
+  costData: {
+    monthly_spend: number;
+    monthly_budget: number;
+    budget_remaining: number;
+    call_count: number;
+    meltdown_level: 'normal' | 'warning' | 'restricted' | 'blocked';
+    llm_model: string;
+    by_task_type: Record<string, number>;
+  };
   apiConnected: boolean;
 }
 
@@ -196,7 +202,7 @@ export type AppAction =
   | { type: 'ANALYSIS_SUCCESS'; payload: OrchestratorResponse }
   | { type: 'ANALYSIS_FAILURE'; payload: string }
   | { type: 'UPDATE_CHARACTER_PAD'; payload: CharacterAnalysis }
-  | { type: 'PAD_LOADING' }
+  | { type: 'SET_COST_DATA'; payload: AppState['costData'] }
   | { type: 'LOAD_ANALYSIS_HISTORY'; payload: AnalysisRecord[] }
   | { type: 'SELECT_COMPARE_SLOT'; payload: { slot: 'A' | 'B'; entryId: string } }
   | { type: 'CLEAR_COMPARE' }

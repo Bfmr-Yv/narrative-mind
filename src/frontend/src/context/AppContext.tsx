@@ -21,8 +21,6 @@ const initialState: AppState = {
   currentAnalysis: null,
   analysisHistory: [],
   isAnalyzing: false,
-  padLoading: false,
-  padCharacterId: '',
   analysisError: null,
   activeRightTab: 'analysis',
   compareSlotA: null,
@@ -30,7 +28,15 @@ const initialState: AppState = {
   leftPanelOpen: true,
   rightPanelOpen: true,
   showProjectSettings: false,
-  costData: { currentMonth: 0, monthlyBudget: 20, breakdown: [] },
+  costData: {
+    monthly_spend: 0,
+    monthly_budget: 20,
+    budget_remaining: 20,
+    call_count: 0,
+    meltdown_level: 'normal' as const,
+    llm_model: '',
+    by_task_type: {},
+  },
   apiConnected: false,
 };
 
@@ -100,7 +106,7 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, showProjectSettings: !state.showProjectSettings };
 
     case 'RETURN_TO_DASHBOARD':
-      return { ...initialState, projects: state.projects, apiConnected: state.apiConnected, costData: state.costData };
+      return { ...initialState, projects: state.projects, apiConnected: state.apiConnected };
 
     case 'SET_CHAPTERS':
       return { ...state, chapters: action.payload };
@@ -171,7 +177,6 @@ function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         isAnalyzing: false,
-        padCharacterId: autoChar || state.selectedCharacterId,
         currentAnalysis: updatedResponse,
         analysisHistory: [entry, ...state.analysisHistory],
         analysisError: null,
@@ -183,16 +188,14 @@ function reducer(state: AppState, action: AppAction): AppState {
     case 'ANALYSIS_FAILURE':
       return { ...state, isAnalyzing: false, analysisError: action.payload };
 
-    case 'PAD_LOADING':
-      return { ...state, padLoading: true };
+    case 'SET_COST_DATA':
+      return { ...state, costData: action.payload };
 
     case 'UPDATE_CHARACTER_PAD': {
       if (!state.currentAnalysis) return state;
       const cr = action.payload;
       return {
         ...state,
-        padLoading: false,
-        padCharacterId: state.selectedCharacterId,
         currentAnalysis: {
           ...state.currentAnalysis,
           engine_results: {
@@ -262,8 +265,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     async function check() {
-      try { await apiClient.checkHealth(); if (!cancelled) dispatch({ type: 'SET_API_STATUS', payload: true }); }
-      catch { if (!cancelled) dispatch({ type: 'SET_API_STATUS', payload: false }); }
+      try {
+        const health = await apiClient.checkHealth();
+        if (cancelled) return;
+        dispatch({ type: 'SET_API_STATUS', payload: true });
+        dispatch({
+          type: 'SET_COST_DATA',
+          payload: {
+            monthly_spend: health.monthly_spend,
+            monthly_budget: health.monthly_budget,
+            budget_remaining: health.budget_remaining,
+            call_count: health.call_count,
+            meltdown_level: health.meltdown_level,
+            llm_model: health.llm_model,
+            by_task_type: health.by_task_type,
+          },
+        });
+      } catch {
+        if (!cancelled) dispatch({ type: 'SET_API_STATUS', payload: false });
+      }
     }
     check();
     const interval = setInterval(check, 30000);

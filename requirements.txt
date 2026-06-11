@@ -9,5 +9,5 @@ flask-cors>=4.0.0
 # LLM API 客户端（OpenAI 兼容接口：DeepSeek / Moonshot 等）
 openai>=1.0.0
 
-# 注意：以下为开发/测试依赖，不引入运行时
-# pytest>=8.0.0  # 后续正式测试框架
+# 开发/测试依赖
+pytest>=8.0.0

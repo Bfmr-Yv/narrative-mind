@@ -7,6 +7,7 @@
 3. scene_analysis prompt → LLM 调用 → JSON 解析
 4. 角色/地点提取 + 事件推演
 """
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,8 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from src.llm import LLMClient, CostTracker, get_config
 from src.llm.prompts import SCENE_ANALYSIS_SYSTEM, format_scene_analysis_prompt
+
+SKIP_LLM_TESTS = os.environ.get('SKIP_LLM_TESTS', '').lower() in ('1', 'true', 'yes')
 
 
 def main():
@@ -31,6 +34,9 @@ def main():
     print(f"   Base URL: {config.base_url}")
 
     if not config.is_configured:
+        if SKIP_LLM_TESTS:
+            print("\n[SKIP] LLM 未配置 (SKIP_LLM_TESTS=1)，跳过烟雾测试")
+            return True
         print("\n[FAIL] LLM 未配置！请检查 config/llm.json")
         return False
 
@@ -41,6 +47,9 @@ def main():
     print(f"   可用: {llm.is_available}")
 
     if not llm.is_available:
+        if SKIP_LLM_TESTS:
+            print("\n[SKIP] LLM 不可用 (SKIP_LLM_TESTS=1)，跳过烟雾测试")
+            return True
         print("\n[FAIL] LLM 客户端不可用！")
         return False
 
@@ -74,9 +83,10 @@ def main():
     print(f"   返回类型: {type(result).__name__}")
     print(f"   返回值: {result}")
 
+    scene_analysis_ok = True
     if not isinstance(result, dict):
-        print("\n[FAIL] LLM 返回非 dict！可能是 JSON 解析失败。")
-        print("   尝试 fallback (entity_extract)...")
+        print("\n[WARN] scene_analysis 返回非 dict！尝试 fallback (entity_extract)...")
+        scene_analysis_ok = False
         from src.llm.prompts import ENTITY_EXTRACT_SYSTEM, format_entity_extract_prompt
         user_message2 = format_entity_extract_prompt(test_text)
         result = llm.call(
@@ -86,7 +96,7 @@ def main():
         )
         print(f"   Fallback 返回: {result}")
         if not isinstance(result, dict):
-            print("\n[FAIL] Fallback 也失败了。LLM 调用存在问题。")
+            print("\n[FAIL] 主路径和 fallback 均失败。LLM 调用存在问题。")
             return False
 
     # 4. 检查返回内容
@@ -119,8 +129,14 @@ def main():
     # 6. 成本
     print(f"\n7. 本次调用成本:")
     status = cost_tracker.status()
-    print(f"   本月已用: ${status['current_month_cost']:.6f}")
-    print(f"   剩余: ${status['remaining_budget']:.2f}")
+    print(f"   本月已用: ${status['monthly_spend']:.6f}")
+    print(f"   剩余: ${status['budget_remaining']:.2f}")
+    print(f"   调用次数: {status['call_count']}")
+
+    # 仅当主路径成功时返回 True
+    if not scene_analysis_ok:
+        print(f"\n[WARN] scene_analysis 主路径失败，通过 fallback 完成了测试")
+        return False
 
     return True
 

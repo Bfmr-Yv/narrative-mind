@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 # 确保 src 目录在 Python 路径中
-_SRC = Path(__file__).resolve().parent / "src"
+_SRC = Path(__file__).resolve().parent.parent / "src"
 if getattr(sys, 'frozen', False):
     _SRC = Path(sys._MEIPASS) / "src"
 if str(_SRC) not in sys.path:

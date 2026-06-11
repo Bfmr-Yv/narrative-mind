@@ -16,6 +16,14 @@ interface HealthResponse {
   status: string;
   slices_loaded: number;
   vocabulary_size: number;
+  llm_available: boolean;
+  llm_model: string;
+  budget_remaining: number;
+  monthly_spend: number;
+  monthly_budget: number;
+  call_count: number;
+  meltdown_level: 'normal' | 'warning' | 'restricted' | 'blocked';
+  by_task_type: Record<string, number>;
 }
 
 class ApiClient {
