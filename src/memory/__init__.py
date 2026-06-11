@@ -26,6 +26,7 @@ from .permanent_memory import (
     WorldRulePattern,
     PermanentQuery,
 )
+from .manager import MemoryManager, UnifiedQuery, UnifiedResult, ChapterSummary
 
 __all__ = [
     # Working
@@ -35,4 +36,6 @@ __all__ = [
     # Permanent
     "PermanentMemory", "AuthorFingerprint", "CharacterArchetype",
     "WorldRulePattern", "PermanentQuery",
+    # Manager
+    "MemoryManager", "UnifiedQuery", "UnifiedResult", "ChapterSummary",
 ]

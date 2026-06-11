@@ -54,10 +54,10 @@
 /* PAD */
 .pad-chart { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.5rem; }
 .pad-row { display: flex; align-items: center; gap: 0.4rem; font-size: var(--font-size-sm); }
-.pad-label { width: 48px; font-weight: 600; color: var(--light-text-secondary); flex-shrink: 0; font-size: 0.75rem; }
+.pad-label { min-width: 52px; font-weight: 600; color: var(--light-text-secondary); flex-shrink: 0; font-size: 0.72rem; white-space: nowrap; }
 .pad-track { flex: 1; height: 8px; background: var(--light-border); border-radius: 4px; overflow: hidden; min-width: 30px; }
 .pad-fill { height: 100%; border-radius: 4px; }
-.pad-value { width: 34px; text-align: right; font-family: var(--font-mono); font-size: 0.7rem; color: var(--light-text-secondary); flex-shrink: 0; }
+.pad-value { min-width: 44px; text-align: right; font-family: var(--font-mono); font-size: 0.7rem; color: var(--light-text-secondary); flex-shrink: 0; white-space: nowrap; }
 
 /* Prediction */
 .prediction-box { padding: 0.5rem; background: var(--light-hover); border-radius: var(--radius-sm); margin-bottom: 0.3rem; }
@@ -150,6 +150,20 @@
 .entity-tag.clickable:hover { filter: brightness(0.92); transform: translateY(-1px); }
 .entity-tag.clickable.active { box-shadow: 0 0 0 2px var(--primary); }
 .hero-back-hint { font-size: 0.7rem; font-weight: 400; color: var(--primary); margin-left: 0.5rem; opacity: 0.8; }
+.back-to-prediction-btn {
+  display: block;
+  width: 100%;
+  padding: 0.4rem;
+  border: none;
+  border-top: 1px solid #bbdefb;
+  background: #e3f2fd;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.back-to-prediction-btn:hover { background: #bbdefb; }
 .auto-badge { background: #c8e6c9 !important; color: #2e7d32 !important; }
 
 /* No character hint */

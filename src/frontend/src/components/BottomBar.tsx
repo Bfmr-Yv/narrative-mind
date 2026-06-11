@@ -26,9 +26,8 @@ const BottomBar: React.FC = () => {
   return (
     <div className="bottom-bar">
       <span className="bottom-item" title={tooltipText}>
-        ${costData.monthly_spend.toFixed(4)}
-        <span className="muted"> / ${costData.monthly_budget.toFixed(0)}</span>
-        <span className="muted"> ({usagePercent.toFixed(0)}%)</span>
+        $<strong>{costData.monthly_spend.toFixed(2)}</strong>
+        <span className="muted">/{costData.monthly_budget.toFixed(0)}</span>
         <span className={meltdownDot} />
       </span>
 
@@ -36,20 +35,16 @@ const BottomBar: React.FC = () => {
         {meltdownLabel[costData.meltdown_level] || costData.meltdown_level}
       </span>
 
-      <span className="bottom-item muted">
-        {activeProjectId ? '编辑模式' : '工作台'}
+      <span className="bottom-item muted hide-on-narrow" title={tooltipText}>
+        {costData.call_count}次
       </span>
 
-      <span className="bottom-item muted" title={tooltipText}>
-        调用: {costData.call_count}
-      </span>
+      <span className="bottom-item" style={{ flex: 1 }} />
 
       <span className="bottom-item">
         <span className={`api-dot ${apiConnected ? 'on' : 'off'}`} />
-        <span className="muted">{apiConnected ? 'API' : '离线'}</span>
+        v3.1
       </span>
-
-      <span className="bottom-item muted">v3.1</span>
     </div>
   );
 };

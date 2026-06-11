@@ -111,16 +111,18 @@ const TabAnalysis: React.FC = () => {
       {/* 1. Hero card — toggles between prediction / char intro / loc intro */}
       {heroContent && (
         <div className="prediction-hero">
-          <div
-            className="prediction-hero-label"
-            onClick={() => setInfoView({ type: 'prediction' })}
-            style={{ cursor: 'pointer' }}
-            title="点击返回事件推演"
-          >
+          <div className="prediction-hero-label">
             {heroTitle}
-            {infoView.type !== 'prediction' && <span className="hero-back-hint"> ← 返回推演</span>}
           </div>
           <div className="prediction-text">{heroContent}</div>
+          {infoView.type !== 'prediction' && (
+            <button
+              className="back-to-prediction-btn"
+              onClick={() => setInfoView({ type: 'prediction' })}
+            >
+              ← 返回事件推演
+            </button>
+          )}
         </div>
       )}
 
