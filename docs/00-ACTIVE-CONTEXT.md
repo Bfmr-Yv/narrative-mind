@@ -1,11 +1,11 @@
 # 活跃上下文
 
-> **最后更新**: 2026-06-09  
-> **状态**: Phase 1 M6 完成 — LLM 集成 + 语料自扩充回路
+> **最后更新**: 2026-06-11  
+> **状态**: Phase 2 完成 — 5 引擎 + 3 层记忆 + 6 维守卫 + Phase 3 主题引擎就绪
 
 ## 当前焦点
 
-**Phase 1 M6 完成**：LLM 集成完毕，MiMo v2.5-pro API 接入，语料自扩充回路运转，前端自动保存已修复，EXE 打包配置更新。
+**Phase 2 交付完毕**：叙事引擎、文辞引擎、情节记忆、永久记忆、守卫扩展 6 维、统一记忆管理器、全链路集成测试通过。**Phase 3 主题引擎已启动**。
 
 ## 阻塞项
 
@@ -13,97 +13,83 @@
 
 ## 已完成项
 
-1. ~~`src/` 目录骨架搭建~~ ✅ 完成（2026-06-03）
-2. ~~创建 `CODING-STANDARDS.md`~~ ✅ 完成（2026-06-08）→ 2026-06-11 合并入 `CONTRIBUTING.md`
-3. ~~运行 NGP 守卫脚本测试~~ ✅ 通过（2026-06-03）
-4. ~~创建 `src/corpus_anchor/` 代码框架~~ ✅ 完成（2026-06-08）
-5. ~~准备语料切片~~ ✅ 完成（20 切片，人工审核）
-6. ~~放宽切片长度标准~~ ✅ 完成（450-800 字）
-7. ~~实现语料检索功能~~ ✅ 完成（TF-IDF + 余弦相似度）
-8. ~~实现角色引擎核心功能~~ ✅ 完成（LLM PAD 分析 + 行为预测）
-9. ~~实现世界引擎核心功能~~ ✅ 完成（LLM 规则校验 + 空间一致性）
-10. ~~实现一致性守卫~~ ✅ 完成（3 维检查 + 警报）
-11. ~~实现编排器~~ ✅ 完成（事件路由 + 引擎调度）
-12. ~~实现记忆系统~~ ✅ 完成（工作记忆 + 读写接口）
-13. ~~端到端集成测试~~ ✅ 通过
-14. ~~创建前端项目结构~~ ✅ 完成（React + TypeScript）
-15. ~~实现章节编辑器~~ ✅ 完成
-16. ~~实现侧边栏建议卡片~~ ✅ 完成
-17. ~~实现成本追踪~~ ✅ 完成
-18. ~~创建 API 服务器~~ ✅ 完成（Flask）
-19. **M6: LLM 集成 + 语料自扩充回路** ✅ 完成（2026-06-09）
-20. **EXE 打包配置更新** ✅ 完成（2026-06-09）
+### Phase 1（实践者）
+1. ~~目录骨架搭建~~ ✅
+2. ~~语料切片（20 片）~~ ✅
+3. ~~角色引擎 + 世界引擎~~ ✅
+4. ~~编排器 + 一致性守卫~~ ✅
+5. ~~工作记忆~~ ✅
+6. ~~React 前端 + Flask API~~ ✅
+7. ~~M6: LLM 集成 + 语料自扩充回路~~ ✅ (2026-06-09)
+8. ~~Items 1-4: Refiner / 实体提取 / 多分析对比 / 历史持久化~~ ✅
+
+### Phase 2（协作者）
+9. ~~叙事引擎（伏笔 + 因果链 + 情节推演）~~ ✅ (2026-06-10)
+10. ~~文辞引擎（风格指标 + 语域一致 + 角色用语）~~ ✅ (2026-06-11)
+11. ~~情节记忆（SQLite + 热缓存 + 因果图谱 + 伏笔表）~~ ✅ (2026-06-11)
+12. ~~永久记忆（作者指纹 + 原型库 + 规则模式 + 主动遗忘）~~ ✅ (2026-06-11)
+13. ~~统一记忆管理器（三层协调 + 章节下沉 + 跨书积累）~~ ✅ (2026-06-11)
+14. ~~守卫 3→6 维（伏笔/因果/叙事一致 实际检查逻辑）~~ ✅ (2026-06-11)
+15. ~~目录精简（26→12 条目）~~ ✅ (2026-06-11)
+16. ~~GitHub 社区（README 重写 + Issue 模板）~~ ✅ (2026-06-11)
+17. ~~Phase 2 全链路集成测试（8/8）~~ ✅ (2026-06-11)
+
+### Phase 3（协作者）
+18. ~~主题引擎（主题提取 + 演变追踪 + 一致性告警）~~ ✅ (2026-06-11)
 
 ## 待办队列
 
-1. **静态语料标注优化回路**（Refiner）：LLM 分析结果反哺静态切片元数据
-2. **角色/地点自动提取**：从分析结果中提取建议的角色和地点
-3. **前端分析结果多次对比**：支持同一章节多次分析并对比结果
-4. **前端历史记录持久化**：分析历史不因刷新丢失
+### 实践者侧
+- [ ] 守卫 Phase 2 维度接入 API 端点
+- [ ] `api_server.py` 新增 narrative / prose / theme 端点
+- [ ] 前端接入新引擎分析结果
+- [ ] 前端 UX 打磨（loading 状态、错误提示）
+
+### 协作者侧
+- [ ] Phase 3 经济引擎
+- [ ] Phase 3 读者预期引擎
+- [ ] Phase 3 构思引擎
+- [ ] 守卫 Phase 3 维度（temporal / power / relationship / style）
 
 ## 最后操作
 
-- **2026-06-09**: M6 LLM 集成完成（MiMo v2.5-pro API）
-- **2026-06-09**: 语料自扩充回路实现（Enricher + 动态索引）
-- **2026-06-09**: EXE 打包配置更新（包含 LLM 模块 + openai SDK）
-- **2026-06-09**: 前端自动保存修复 + 文本截断修复（500→4000 字）
-- **2026-06-08**: 前端组件创建完成（ChapterEditor, SuggestionPanel, CostTracker）
+- **2026-06-11**: Phase 3 主题引擎就绪，5 引擎全链路集成测试通过
+- **2026-06-11**: 守卫 6 维实际检查逻辑实现
+- **2026-06-11**: 统一 MemoryManager 门面完成
+- **2026-06-11**: 目录精简 26→12，GitHub 社区文档完善
+- **2026-06-11**: Phase 2 文辞引擎 + 三层记忆完成
+- **2026-06-10**: Phase 2 叙事引擎完成
+- **2026-06-09**: M6 LLM 集成完成
 
 ## 会话历史
 
 - **2026-06-02**: 文档闭环（27 文件冻结）
-- **2026-06-03**: NGP 搭建完成（Step 1-3）
-- **2026-06-03**: src/ 目录骨架搭建完成
-- **2026-06-08**: M2 语料冷启动完成
-- **2026-06-08**: M3 引擎核心完成（角色+世界+语料检索）
-- **2026-06-08**: M4 编排+守卫完成
-- **2026-06-08**: M5 前端组件和 API 服务器创建完成
-- **2026-06-09**: M6 LLM 集成 + 语料自扩充回路完成
+- **2026-06-03**: NGP 搭建完成 + src/ 目录骨架
+- **2026-06-08**: M2-M5 完成（语料、引擎、编排、前端）
+- **2026-06-09**: M6 LLM 集成完成
+- **2026-06-10**: Phase 2 叙事引擎 + 目录精简
+- **2026-06-11**: Phase 2 全部完成 + Phase 3 主题引擎启动
 
 ## 活跃模块
 
 | 模块 | 状态 | 文件 |
 |------|------|------|
-| LLM 集成层 | ✅ M6 完成 | `src/llm/` |
-| 角色引擎 | ✅ LLM 升级完成 | `src/engines/character.py` |
-| 世界引擎 | ✅ LLM 升级完成 | `src/engines/world.py` |
-| 语料锚定层 | ✅ 检索 + 扩充完成 | `src/corpus_anchor/` |
-| 语料自扩充器 | ✅ M6 新增 | `src/corpus_anchor/enricher.py` |
-| 一致性守卫 | ✅ 实现完成 | `src/consistency_guardian/guardian.py` |
-| 编排器 | ✅ 扩充回路集成 | `src/orchestrator/router.py` |
-| 记忆系统 | ✅ 实现完成 | `src/memory/working_memory.py` |
-| API 服务器 | ✅ LLM 集成完成 | `src/api_server.py` |
-| 前端 | ✅ 自动保存修复 | `src/frontend/` |
-| EXE 打包 | ✅ M6 配置更新 | `NarrativeMind.spec` |
-
-## LLM 配置
-
-| 项目 | 值 |
-|------|-----|
-| Provider | 小米 MiMo TokenPlan |
-| Model | mimo-v2.5-pro |
-| API Endpoint | https://token-plan-cn.xiaomimimo.com/v1 |
-| 配置文件 | `config/llm.json`（gitignored） |
-| 月度预算 | $20（三层熔断：50%/80%/95%） |
-
-## NGP Skills
-
-| Skill | 文件 | 状态 |
-|-------|------|------|
-| 编排器 | `prompts/ngp-skills/orchestrator.md` | ✅ 已创建 |
-| 角色引擎 | `prompts/ngp-skills/character-engine.md` | ✅ 已创建 |
-| 世界引擎 | `prompts/ngp-skills/world-engine.md` | ✅ 已创建 |
-
-## 冻结决策
-
-- ADR-001: PAD 情感模型
-- ADR-003: 禁用自动修正
-- ADR-007: Phase 1 范围裁剪
-- ADR-008: 人类决策优先
-- ADR-009: Tier 0-4 分级定价
-- ADR-011: Phase 1 仅激活 2 引擎
-- ADR-012: 本地 7B 处理 70% 任务（**已修订**：实际使用 MiMo 云 API 替代本地模型）
-- ADR-015: MiMo API 替代本地模型 + 成本追踪（新增）
+| LLM 集成层 | ✅ | `src/llm/` |
+| **角色引擎** | ✅ Phase 1 | `src/engines/character.py` |
+| **世界引擎** | ✅ Phase 1 | `src/engines/world.py` |
+| **叙事引擎** | ✅ Phase 2 | `src/engines/narrative.py` |
+| **文辞引擎** | ✅ Phase 2 | `src/engines/prose.py` |
+| **主题引擎** | ✅ Phase 3 | `src/engines/theme.py` |
+| 语料锚定层 | ✅ | `src/corpus_anchor/` |
+| 语料自扩充器 | ✅ | `src/corpus_anchor/enricher.py` |
+| 一致性守卫 | ✅ 6 维 | `src/consistency_guardian/guardian.py` |
+| 编排器 | ✅ 5 引擎路由 | `src/orchestrator/router.py` |
+| 工作记忆 | ✅ Phase 1 | `src/memory/working_memory.py` |
+| 情节记忆 | ✅ Phase 2 | `src/memory/episodic_memory.py` |
+| 永久记忆 | ✅ Phase 2 | `src/memory/permanent_memory.py` |
+| 统一记忆管理 | ✅ Phase 2 | `src/memory/manager.py` |
+| API 服务器 | ✅ | `src/api_server.py` |
+| 前端 | ✅ | `src/frontend/` |
 
 ## 命名冻结
 
@@ -115,25 +101,71 @@
 | 语料自扩充器 | Enricher | ✅ Phase 1 M6 |
 | 级联修正器 | Cascade Fixer | ✅ Phase 1 |
 | 编排器 | Orchestrator | ✅ Phase 1 |
-| 叙事引擎 | Narrative Engine | Phase 2+ |
-| 文辞引擎 | Prose Engine | Phase 2+ |
-| 主题引擎 | Theme Engine | Phase 3+ |
+| 叙事引擎 | Narrative Engine | ✅ Phase 2 |
+| 文辞引擎 | Prose Engine | ✅ Phase 2 |
+| 主题引擎 | Theme Engine | ✅ Phase 3 |
+| 情节记忆 | Episodic Memory | ✅ Phase 2 |
+| 永久记忆 | Permanent Memory | ✅ Phase 2 |
 | 经济引擎 | Economy Engine | Phase 3+ |
 | 读者预期引擎 | Reader Expectation Engine | Phase 3+ |
 | 构思引擎 | Conception Engine | Phase 3+ |
 
-## Phase 1 排除项
+## LLM 配置
 
-- ❌ 叙事/文辞/主题/经济/读者预期/构思引擎
-- ❌ 永久记忆
+| 项目 | 值 |
+|------|-----|
+| Provider | 小米 MiMo TokenPlan |
+| Model | mimo-v2.5-pro |
+| API Endpoint | https://token-plan-cn.xiaomimimo.com/v1 |
+| 配置文件 | `config/llm.json`（gitignored） |
+| 月度预算 | $20（三层熔断：50%/80%/95%） |
+
+## 冻结决策
+
+- ADR-001: PAD 情感模型
+- ADR-003: 禁用自动修正
+- ADR-007: Phase 1 范围裁剪
+- ADR-008: 人类决策优先
+- ADR-009: Tier 0-4 分级定价
+- ADR-011: Phase 1 仅激活 2 引擎（已扩展至 5 引擎）
+- ADR-012: 本地 7B → MiMo 云 API（已修订）
+- ADR-015: MiMo API 替代本地模型 + 成本追踪
+
+## Phase 2 排除项（已部分解除）
+
+- ❌ 叙事引擎 → ✅ 已实现
+- ❌ 文辞引擎 → ✅ 已实现
+- ❌ 永久记忆 → ✅ 已实现
+- ❌ 情节记忆 → ✅ 已实现
+- ❌ 守卫扩展 → ✅ 已实现 6 维
+- ❌ 主题引擎 → ✅ Phase 3 已启动
+- ❌ 经济/读者预期/构思引擎 → 仍排除
 - ❌ 级联修正器的因果推理
 - ❌ 意图标记系统
 - ❌ 章节级快照
 - ❌ 复杂 Dashboard
-- ❌ 本地 Qwen2.5-7B 部署（改为 MiMo 云 API）
 
 ## 成本约束
 
-- **实际使用**: MiMo TokenPlan（API key: `tp-cpj9...`）
+- **实际使用**: MiMo TokenPlan
 - **月度上限**: $20（硬性熔断）
 - **禁止改动**: `04-COST-BUDGET.md`
+
+## LLM 任务类型（全量）
+
+| task_type | Phase | 状态 |
+|-----------|-------|------|
+| `pad_compute` | Phase 1 | ✅ 实践者 |
+| `action_infer` | Phase 1 | ✅ 实践者 |
+| `rule_check` | Phase 1 | ✅ 实践者 |
+| `spatial_check` | Phase 1 | ✅ 实践者 |
+| `rerank` | Phase 1 | ✅ 实践者 |
+| `entity_extract` | Phase 1 | ✅ 实践者 |
+| `scene_analysis` | Phase 1 | ✅ 实践者 |
+| `foreshadow_detect` | Phase 2 | ✅ 协作者 |
+| `causal_extract` | Phase 2 | ✅ 协作者 |
+| `resolution_check` | Phase 2 | ✅ 协作者 |
+| `event_predict` | Phase 2 | ✅ 协作者 |
+| `style_check` | Phase 2 | ✅ 协作者 |
+| `register_check` | Phase 2 | ✅ 协作者 |
+| `theme_extract` | Phase 3 | ✅ 协作者 |
