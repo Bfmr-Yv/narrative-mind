@@ -48,3 +48,6 @@ src-tauri/tauri.conf.json.local
 # Claude Code config (may contain paths/settings)
 .claude/settings.json
 .claude/settings.local.json
+
+# Tauri generated code
+src-tauri/gen/

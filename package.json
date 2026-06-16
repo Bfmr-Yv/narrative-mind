@@ -1,0 +1,11 @@
+{
+  "name": "narrative-mind-root",
+  "version": "4.0.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

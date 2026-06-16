@@ -6,11 +6,10 @@
   "build": {
     "frontendDist": "../src-frontend/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "cd ../src-frontend && npm run dev",
-    "beforeBuildCommand": "cd ../src-frontend && npm run build"
+    "beforeDevCommand": "cd src-frontend && npm run dev",
+    "beforeBuildCommand": "cd src-frontend && npm run build"
   },
   "app": {
-    "title": "Narrative Mind v4.0",
     "windows": [
       {
         "title": "Narrative Mind v4.0 — AI 辅助小说创作",
