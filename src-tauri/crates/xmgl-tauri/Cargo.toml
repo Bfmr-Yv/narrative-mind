@@ -5,3 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+xmgl-core = { path = "../xmgl-core" }
+xmgl-agent = { path = "../xmgl-agent" }
+xmgl-orchestrator = { path = "../xmgl-orchestrator" }
+xmgl-project = { path = "../xmgl-project" }
+xmgl-memory = { path = "../xmgl-memory" }
+tokio.workspace = true
+serde_json.workspace = true

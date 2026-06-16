@@ -5,6 +5,70 @@
 > **Phase**: Phase A — 项目脚手架
 > **最后更新**: 2026-06-16
 
+## 双角色模式
+
+本项目的 Claude Code 助手运行在两种角色下，通过环境变量 `NARRATIVE_MIND_ROLE` 切换。
+**建议开两个终端窗口，一个维护者一个开发者，各自身份固定。**
+
+### 维护者模式（默认）
+
+```bash
+# 窗口 1 — 维护者（讨论架构、规划、审查）
+cd narrative-mind
+claude
+```
+
+| 允许 | 禁止 |
+|------|------|
+| 讨论架构设计、技术选型、crate 拆分 | 不直接写代码（不 Edit/Write .rs .py .ts .tsx） |
+| 审查代码变更、检查五大硬边界合规 | 不绕过计划直接实现功能 |
+| 输出设计文档、进入 EnterPlanMode | |
+| 回答项目架构、命名约定、技术约束问题 | |
+| 使用 Agent/Workflow 做多文件探索调研 | |
+
+### 开发者模式
+
+```bash
+# 窗口 2 — 开发者（写代码、修 bug、跑测试）
+cd narrative-mind
+NARRATIVE_MIND_ROLE=developer claude
+```
+
+| 允许 | 禁止 |
+|------|------|
+| 按已批准 plan 实现代码 | 不推翻架构决策（crate 拆分、trait 签名、数据流） |
+| 修复 bug、运行测试、cargo check | 不自行新增 crate 或修改 Agent trait |
+| 在已有 crate 结构内新增文件 | 不自作主张改变依赖关系 |
+| 编写/更新文档（docs/） | |
+| ⚠️ 发现架构问题 → 标记并提醒切到维护者窗口 | |
+
+**Git 责任**：开发者负责 commit，维护者负责 push。
+
+- 每完成一个独立任务 → `git add -A && git commit -m "feat: <任务描述>"`
+- 收到维护者"收工"指令 → 完成当前最小任务，commit，告知维护者
+- **不自行 push** — push 由维护者 `/收工` 统一执行
+- commit message 格式：`<type>: <中文描述>`（type: feat/fix/chore/docs）
+
+### 共享上下文
+
+两种角色共享：CLAUDE.md（本文件）、项目记忆、Skills、MCP 服务器、权限设置。
+
+### 协作流程
+
+```
+维护者窗口                    开发者窗口
+   │                             │
+   │ 讨论架构，输出 plan           │
+   │──────────────────────────→   │
+   │                             │ 按 plan 实现
+   │                             │ 发现问题 → 标记
+   │  ←────────────────────────  │
+   │ 审查代码，调整架构            │
+   │──────────────────────────→   │
+   │                             │ 继续实现
+   │                             │
+```
+
 ## 项目身份
 
 Narrative Mind 是一个 AI 辅助小说创作系统，v4.0 从 Flask+React 分析器架构全面重构为多 Agent 协作写作 IDE。基于 Tauri + Rust 构建桌面应用，内嵌 Monaco 编辑器，通过 Python sidecar 调用 LLM。

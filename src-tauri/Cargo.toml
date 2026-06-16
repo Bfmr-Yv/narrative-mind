@@ -28,9 +28,12 @@ tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = "0.31"
 reqwest = { version = "0.12", features = ["json"] }
 thiserror = "1"
 
 [dependencies]
-# Tauri will be added here in Phase E
+tauri = { version = "2", features = [] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

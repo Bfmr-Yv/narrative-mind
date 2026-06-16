@@ -1,23 +1,26 @@
 import React from "react";
+import TitleBar from "./components/TitleBar";
+import LeftSidebar from "./components/LeftSidebar";
+import EditorArea from "./components/EditorArea";
+import "./App.css";
 
+/**
+ * App — Narrative Mind v4.0 根组件
+ *
+ * Phase A 布局骨架：
+ * - 顶部标题栏（TitleBar）
+ * - 左侧导航栏（LeftSidebar）
+ * - 中央编辑器区域（EditorArea，Monaco 占位）
+ *
+ * Phase E 后替换为完整 Monaco + Agent Panel。
+ */
 const App: React.FC = () => {
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      height: "100vh",
-      color: "#6b7280",
-      fontSize: "14px",
-    }}>
-      <div style={{ textAlign: "center" }}>
-        <h1 style={{ fontSize: "24px", marginBottom: "8px", color: "#1f2937" }}>
-          Narrative Mind
-        </h1>
-        <p>v4.0 — AI 辅助小说创作系统</p>
-        <p style={{ marginTop: "16px", fontSize: "12px", color: "#9ca3af" }}>
-          脚手架就绪 · Phase A 进行中
-        </p>
+    <div className="app-container">
+      <TitleBar />
+      <div className="main-area">
+        <LeftSidebar />
+        <EditorArea />
       </div>
     </div>
   );

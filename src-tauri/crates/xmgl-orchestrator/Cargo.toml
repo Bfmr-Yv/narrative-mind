@@ -5,3 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+xmgl-core = { path = "../xmgl-core" }
+xmgl-agent = { path = "../xmgl-agent" }
+xmgl-memory = { path = "../xmgl-memory" }
+xmgl-python-bridge = { path = "../xmgl-python-bridge" }
+tokio.workspace = true
+async-trait.workspace = true

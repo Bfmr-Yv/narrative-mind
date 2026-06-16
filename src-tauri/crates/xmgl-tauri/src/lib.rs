@@ -1,14 +1,9 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+//! xmgl-tauri — Tauri Commands + Events 胶水层
+//!
+//! 本 crate 实现 Tauri 桌面框架集成：
+//! - `#[tauri::command]` IPC 命令处理
+//! - Tauri 事件系统（前后端推送）
+//! - 连接 Orchestrator、Project、Memory 的胶水代码
+//! - 文件系统操作（项目目录管理）
+//!
+//! Phase B 开始填充实现。

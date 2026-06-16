@@ -21,13 +21,21 @@ pub struct PADState {
 
 impl PADState {
     pub fn new(pleasure: f64, arousal: f64, dominance: f64) -> Self {
-        Self { pleasure, arousal, dominance }
+        Self {
+            pleasure,
+            arousal,
+            dominance,
+        }
     }
 }
 
 impl Default for PADState {
     fn default() -> Self {
-        Self { pleasure: 0.0, arousal: 0.0, dominance: 0.0 }
+        Self {
+            pleasure: 0.0,
+            arousal: 0.0,
+            dominance: 0.0,
+        }
     }
 }
 
@@ -65,9 +73,15 @@ impl AgentId {
 
     pub fn all() -> Vec<AgentId> {
         vec![
-            AgentId::Character, AgentId::World, AgentId::Narrative,
-            AgentId::Prose, AgentId::Theme, AgentId::Economy,
-            AgentId::ReaderExpectation, AgentId::Conception, AgentId::EditorInChief,
+            AgentId::Character,
+            AgentId::World,
+            AgentId::Narrative,
+            AgentId::Prose,
+            AgentId::Theme,
+            AgentId::Economy,
+            AgentId::ReaderExpectation,
+            AgentId::Conception,
+            AgentId::EditorInChief,
         ]
     }
 }

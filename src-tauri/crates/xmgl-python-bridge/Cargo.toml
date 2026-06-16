@@ -5,3 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+xmgl-core = { path = "../xmgl-core" }
+reqwest.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

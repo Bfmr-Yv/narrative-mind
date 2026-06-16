@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/open-tauri/main/schema.json",
+  "productName": "Narrative Mind",
+  "version": "4.0.0",
+  "identifier": "com.narrative-mind.app",
+  "build": {
+    "frontendDist": "../src-frontend/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "cd ../src-frontend && npm run dev",
+    "beforeBuildCommand": "cd ../src-frontend && npm run build"
+  },
+  "app": {
+    "title": "Narrative Mind v4.0",
+    "windows": [
+      {
+        "title": "Narrative Mind v4.0 — AI 辅助小说创作",
+        "width": 1400,
+        "height": 900
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}
