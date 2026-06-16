@@ -1,0 +1,36 @@
+[package]
+name = "narrative-mind"
+version = "4.0.0"
+edition = "2021"
+license = "MIT"
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/xmgl-core",
+    "crates/xmgl-agent",
+    "crates/xmgl-orchestrator",
+    "crates/xmgl-memory",
+    "crates/xmgl-project",
+    "crates/xmgl-python-bridge",
+    "crates/xmgl-tauri",
+]
+
+[workspace.package]
+version = "4.0.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json"] }
+thiserror = "1"
+
+[dependencies]
+# Tauri will be added here in Phase E

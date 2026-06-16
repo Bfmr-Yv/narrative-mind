@@ -1,0 +1,50 @@
+# Rust
+target/
+Cargo.lock
+
+# Tauri
+src-tauri/target/
+src-tauri/icons/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+
+# Node / Frontend
+node_modules/
+src-frontend/dist/
+src-frontend/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config (sensitive)
+config/llm.json
+config/cost-log.json
+.env
+
+# Data
+xmgl.db
+projects/
+*.db-journal
+*.db-wal
+
+# Migration marker
+.xmgl_migrated_v4
+
+# Tauri build artifacts
+src-tauri/tauri.conf.json.local
+
+# Claude Code config (may contain paths/settings)
+.claude/settings.json
+.claude/settings.local.json
