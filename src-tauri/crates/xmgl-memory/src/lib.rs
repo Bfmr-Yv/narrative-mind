@@ -7,3 +7,11 @@
 //! - SQLite 存储（memory.db）+ 成本追踪表（cost_log）
 //!
 //! Phase B 开始填充实现（SQLite schema 设计）。
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_compiles() {
+        assert!(true);
+    }
+}

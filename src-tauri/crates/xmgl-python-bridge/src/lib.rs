@@ -9,3 +9,11 @@
 //! - 健康检查 + 重试 + 超时（30s fallback）
 //!
 //! Phase B 开始填充实现。
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_compiles() {
+        assert!(true);
+    }
+}

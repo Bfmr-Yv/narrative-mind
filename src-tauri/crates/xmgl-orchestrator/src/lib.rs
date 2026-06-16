@@ -8,3 +8,11 @@
 //! - 只有本 crate 拥有记忆写入权
 //!
 //! Phase C 开始填充实现。
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_compiles() {
+        assert!(true);
+    }
+}

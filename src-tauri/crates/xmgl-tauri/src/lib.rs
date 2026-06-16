@@ -7,3 +7,11 @@
 //! - 文件系统操作（项目目录管理）
 //!
 //! Phase B 开始填充实现。
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_compiles() {
+        assert!(true);
+    }
+}

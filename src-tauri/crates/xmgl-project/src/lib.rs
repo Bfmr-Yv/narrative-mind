@@ -7,3 +7,11 @@
 //! - 项目元数据（字数统计、创建时间、修改时间）
 //!
 //! Phase B 开始填充实现。
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_compiles() {
+        assert!(true);
+    }
+}

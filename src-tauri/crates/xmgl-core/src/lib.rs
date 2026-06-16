@@ -226,3 +226,37 @@ pub enum TaskComplexity {
     Complex,
     FullScene,
 }
+
+// =========================================================================
+// Tests
+// =========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pad_state_default() {
+        let pad = PADState::default();
+        assert_eq!(pad.pleasure, 0.0);
+        assert_eq!(pad.arousal, 0.0);
+        assert_eq!(pad.dominance, 0.0);
+    }
+
+    #[test]
+    fn test_agent_id_all_has_9() {
+        assert_eq!(AgentId::all().len(), 9);
+    }
+
+    #[test]
+    fn test_task_type_roundtrip() {
+        for task in &[
+            TaskType::PadCompute,
+            TaskType::EntityExtract,
+            TaskType::SceneAnalysis,
+        ] {
+            let s = task.as_str();
+            assert!(!s.is_empty());
+        }
+    }
+}

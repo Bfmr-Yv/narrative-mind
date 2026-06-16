@@ -8,3 +8,11 @@
 //!   Theme, Economy, ReaderExpectation, Conception, EditorInChief）
 //!
 //! Phase C 开始填充实现。
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_compiles() {
+        assert!(true);
+    }
+}
