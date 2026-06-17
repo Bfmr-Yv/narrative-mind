@@ -45,9 +45,9 @@ projects/
 # Tauri build artifacts
 src-tauri/tauri.conf.json.local
 
-# Claude Code config (may contain paths/settings)
-.claude/settings.json
-.claude/settings.local.json
+# Claude Code config (local only — skills/settings/MCP all excluded)
+.claude/
+.mcp.json
 
 # Tauri generated code
 src-tauri/gen/
