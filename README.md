@@ -24,4 +24,21 @@ Narrative Mind 是一个桌面写作 IDE，集成了 9 个 AI Agent 协作系统
 
 ## 状态
 
-🚧 **Phase A — 项目脚手架搭建中**
+**Phase A — 脚手架 ✅ 完成**（2026-06-17 验证通过）
+
+### 已有成果
+
+| 组件 | 状态 | 说明 |
+|------|------|------|
+| Rust 核心 (7 crates) | ✅ | workspace 编译通过，类型系统完整，每 crate ≥1 test |
+| Tauri 桌面框架 | ✅ | 窗口弹出正常，前端页面可渲染 |
+| Python Sidecar (FastAPI) | ✅ | 健康检查通过，6 个 API 端点骨架就位 |
+| 前端骨架 (React + Monaco) | ✅ | Vite dev server + Tauri webview 集成 |
+| 语料数据 | 样本 | 红楼梦 4 条 500 字场景切片 |
+
+### 下一步: Phase B — 数据层
+
+- SQLite schema + migration
+- 项目/章节 CRUD
+- 旧版 v3.1 数据迁移
+- 首批 Tauri commands (`list_projects`, `create_project`, `get_chapter`, `update_chapter`)
