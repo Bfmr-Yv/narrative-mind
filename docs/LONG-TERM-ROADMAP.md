@@ -8,29 +8,29 @@
 
 ## 项目当前状态
 
-**Phase A — 脚手架（进行中，约 20% 完成）**
+**Phase A — 脚手架 ✅ 完成（2026-06-17）**
 
 | 组件 | 实际状态 | 完成度 |
 |------|---------|--------|
-| Cargo workspace | 7 crates 目录存在，workspace 依赖声明完整 | 80% |
-| `xmgl-core` | 核心类型全部定义（AgentId/PADState/TaskType 等） | 90% |
-| `xmgl-agent` | 空白 `add` 函数，无 trait/注册表/实现 | 0% |
-| `xmgl-orchestrator` | 空白 `add` 函数 | 0% |
-| `xmgl-memory` | 空白 `add` 函数 | 0% |
-| `xmgl-project` | 空白 `add` 函数 | 0% |
-| `xmgl-python-bridge` | 空白 `add` 函数 | 0% |
-| `xmgl-tauri` | 空白 `add` 函数 | 0% |
-| `main.rs` | 占位打印 | 5% |
-| Python sidecar `main.py` | FastAPI 骨架完整（6 个端点） | 60% |
-| Python `llm/` | 空 stub，import 会失败 | 0% |
-| Python `prompts/` | 空 stub，无 PROMPT_REGISTRY | 0% |
-| Python `corpus/` | 空 stub，无 SliceManager/Retriever/Embedder | 0% |
-| Frontend `App.tsx` | 占位 div | 5% |
-| `tauri.conf.json` | 不存在 | 0% |
-| `prompts/`（根目录） | 空目录 | 0% |
-| `docs/` | 2 份完整设计文档 | 100% |
+| Cargo workspace | 7 crates，workspace 依赖完整，cargo check 通过 | ✅ 100% |
+| `xmgl-core` | 核心类型全部定义（AgentId/PADState/TaskType 等）+ 3 tests | ✅ 100% |
+| `xmgl-agent` | 文档注释就位 + 1 test | ✅ 100%（支架） |
+| `xmgl-orchestrator` | 文档注释就位 + 1 test | ✅ 100%（支架） |
+| `xmgl-memory` | 文档注释就位 + 1 test | ✅ 100%（支架） |
+| `xmgl-project` | 文档注释就位 + 1 test | ✅ 100%（支架） |
+| `xmgl-python-bridge` | 文档注释就位 + 1 test | ✅ 100%（支架） |
+| `xmgl-tauri` | 文档注释就位 + 1 test | ✅ 100%（支架） |
+| `main.rs` | Tauri v2 Builder 入口，窗口弹出通过 | ✅ 100% |
+| Python sidecar `main.py` | FastAPI 骨架完整（6 个端点），健康检查通过 | ✅ 100%（支架） |
+| Python `llm/` | config.py + client.py stub 就位 | ✅ 100%（支架） |
+| Python `prompts/` | registry.py + PROMPT_REGISTRY stub | ✅ 100%（支架） |
+| Python `corpus/` | SliceManager/Retriever/Embedder stub | ✅ 100%（支架） |
+| Frontend `App.tsx` | 占位 div，Tauri 窗口可渲染 | ✅ 100%（支架） |
+| `tauri.conf.json` | 窗口 1400×900，devUrl/build 配置完整 | ✅ 100% |
+| `capabilities/default.json` | Tauri v2 权限声明 | ✅ 100% |
+| `docs/` | 4 份设计文档 | ✅ 100% |
 | `corpus/` | 红楼梦 4 条样本切片 | 样本 |
-| Claude Code 环境 | 双角色 + MCP + Skills + Hooks | 100% |
+| Claude Code 环境 | 双角色 + MCP + Skills + Hooks | ✅ 100% |
 
 ---
 
@@ -38,13 +38,13 @@
 
 **目标**: Rust ↔ Python 健康检查通过
 
-- [ ] Python sidecar 可启动（修复 llm/client.py, llm/config.py, prompts/registry.py, corpus/*.py 导入链）
-- [ ] `xmgl-core` Cargo.toml 补齐 serde 依赖
-- [ ] `cargo check` 全 workspace 通过
-- [ ] `GET /v1/llm/health` → `{"status": "ok"}`
-- [ ] Tauri 空壳可启动（创建 `tauri.conf.json`，集成到 `main.rs`）
-- [ ] 前端 Vite dev 可启动（localhost:1420）
-- [ ] `cargo tauri dev` 打开桌面窗口
+- [x] Python sidecar 可启动（修复 llm/client.py, llm/config.py, prompts/registry.py, corpus/*.py 导入链）
+- [x] `xmgl-core` Cargo.toml 补齐 serde 依赖
+- [x] `cargo check` 全 workspace 通过
+- [x] `GET /v1/llm/health` → `{"status": "ok"}`
+- [x] Tauri 空壳可启动（创建 `tauri.conf.json`，集成到 `main.rs`）
+- [x] 前端 Vite dev 可启动（localhost:1420）
+- [x] `cargo tauri dev` 打开桌面窗口
 
 **可验证产出**: Tauri 窗口中显示前端占位页，Python sidecar 健康检查通过
 
