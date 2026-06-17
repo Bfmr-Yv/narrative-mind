@@ -1,44 +1,45 @@
-# Narrative Mind v4.0
+# Narrative Mind
 
-> AI 辅助小说创作 IDE —— 多 Agent 协作写作系统
+AI 辅助长篇小说创作 IDE。将 9 个专业 AI Agent 嵌入编辑器，在作家写作时实时提供修改建议。
 
-## 这是什么
+## 设计理念
 
-Narrative Mind 是一个桌面写作 IDE，集成了 9 个 AI Agent 协作系统。它在编辑器中直接提供修改建议，帮助作家提升作品质量。
+写作是孤独的。好作品需要反复打磨，但每个人都缺一个好编辑。
 
-## 核心特性
+Narrative Mind 不是替作家写作，而是像一位坐在身边的好编辑——发现问题、提出建议、但不替你动笔。Agent 的建议直接标注在编辑器原文中，双击采纳，右键退回，作家始终是最终裁决者。
 
-- **多 Agent 协作**：9 个专业 Agent（角色、世界、叙事、文辞、主题、经济、预期、构思、总编）协同工作
-- **内联修改建议**：Agent 建议直接显示在编辑器原文中，双击即采纳
-- **作家主导**：所有决策由作家做出，Agent 只提供建议
-- **主动 + 被动**：手动触发分析或自动后台监控（500 字增量）
-- **成本可控**：本地规则引擎优先，仅在必要时调用 LLM
+## 架构
 
-## 技术栈
+```
+┌─ Tauri 桌面窗口 ──────────────────────────────┐
+│  Monaco Editor  ·  React  ·  Zustand           │
+│        ↕ Tauri IPC                             │
+│  Rust Core（7 crates）                          │
+│        ↕ HTTP :9091                            │
+│  Python Sidecar（LLM + 语料 + Prompt 管理）      │
+└────────────────────────────────────────────────┘
+```
 
-- **桌面框架**: Tauri 2.x (Rust)
-- **编辑器**: Monaco Editor
-- **前端**: React 18 + Vite + Zustand
-- **LLM 集成**: Python FastAPI sidecar
-- **存储**: SQLite
+| 层 | 技术 |
+|----|------|
+| 桌面框架 | Tauri 2.x |
+| 编辑器 | Monaco Editor |
+| 前端 | React 18 + Vite + Zustand |
+| 核心引擎 | Rust（7 crates） |
+| LLM 集成 | Python FastAPI Sidecar |
+| 存储 | SQLite |
 
-## 状态
+## 当前状态
 
-**Phase A — 脚手架 ✅ 完成**（2026-06-17 验证通过）
+Phase A 脚手架已完成，项目可编译运行。正在进行 Phase B 数据层开发。
 
-### 已有成果
+```bash
+# 启动
+cd src-python && python main.py           # Python Sidecar → :9091
+cd src-frontend && npm run dev            # 前端 → :1420
+cd src-tauri && cargo tauri dev           # 桌面窗口
+```
 
-| 组件 | 状态 | 说明 |
-|------|------|------|
-| Rust 核心 (7 crates) | ✅ | workspace 编译通过，类型系统完整，每 crate ≥1 test |
-| Tauri 桌面框架 | ✅ | 窗口弹出正常，前端页面可渲染 |
-| Python Sidecar (FastAPI) | ✅ | 健康检查通过，6 个 API 端点骨架就位 |
-| 前端骨架 (React + Monaco) | ✅ | Vite dev server + Tauri webview 集成 |
-| 语料数据 | 样本 | 红楼梦 4 条 500 字场景切片 |
+## 许可
 
-### 下一步: Phase B — 数据层
-
-- SQLite schema + migration
-- 项目/章节 CRUD
-- 旧版 v3.1 数据迁移
-- 首批 Tauri commands (`list_projects`, `create_project`, `get_chapter`, `update_chapter`)
+MIT License © 2026 Bfmr
