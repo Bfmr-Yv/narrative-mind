@@ -10,5 +10,9 @@ xmgl-agent = { path = "../xmgl-agent" }
 xmgl-orchestrator = { path = "../xmgl-orchestrator" }
 xmgl-project = { path = "../xmgl-project" }
 xmgl-memory = { path = "../xmgl-memory" }
+xmgl-python-bridge = { path = "../xmgl-python-bridge" }
+tauri.workspace = true
 tokio.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+uuid.workspace = true

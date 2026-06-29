@@ -31,12 +31,15 @@ tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-rusqlite = "0.31"
+rusqlite = { version = "0.31", features = ["bundled"] }
 reqwest = { version = "0.12", features = ["json"] }
 thiserror = "1"
+tauri = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+xmgl-tauri = { path = "crates/xmgl-tauri" }
+xmgl-core = { path = "crates/xmgl-core" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

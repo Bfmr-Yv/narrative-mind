@@ -1,8 +1,9 @@
 //! Narrative Mind v4.0 — 共享类型定义
 //!
-//! 所有 crate 依赖的基础类型，零外部依赖（仅 serde）。
+//! 所有 crate 依赖的基础类型（serde + thiserror）。
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 // =========================================================================
 // PAD 情感模型
@@ -171,7 +172,7 @@ pub struct TextRange {
 // 项目 & 章节
 // =========================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProjectMeta {
     pub id: String,
     pub name: String,
@@ -181,13 +182,14 @@ pub struct ProjectMeta {
     pub total_words: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChapterData {
     pub id: String,
     pub project_id: String,
     pub title: String,
     pub text: String,
     pub word_count: u32,
+    pub sort_order: u32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -228,6 +230,35 @@ pub enum TaskComplexity {
 }
 
 // =========================================================================
+// 核心错误类型
+// =========================================================================
+
+/// xmgl-core 统一错误类型。
+///
+/// 所有 crate 通过此类型共享基础错误语义，
+/// 上层 crate 可通过 `thiserror` 的 `#[from]` 或手动 `impl From` 转换。
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum CoreError {
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    #[error("Already exists: {0}")]
+    AlreadyExists(String),
+
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
+
+    #[error("Invalid state: {0}")]
+    InvalidState(String),
+
+    #[error("Internal error: {0}")]
+    Internal(String),
+}
+
+/// `Result` alias，以 CoreError 为默认错误类型。
+pub type CoreResult<T> = Result<T, CoreError>;
+
+// =========================================================================
 // Tests
 // =========================================================================
 
@@ -258,5 +289,88 @@ mod tests {
             let s = task.as_str();
             assert!(!s.is_empty());
         }
+    }
+
+    #[test]
+    fn test_chapter_data_sort_order() {
+        let chapter = ChapterData {
+            id: "ch1".into(),
+            project_id: "p1".into(),
+            title: "Test Chapter".into(),
+            text: "Hello world".into(),
+            word_count: 2,
+            sort_order: 5,
+            created_at: "2026-01-01".into(),
+            updated_at: "2026-01-02".into(),
+        };
+        assert_eq!(chapter.sort_order, 5);
+    }
+
+    #[test]
+    fn test_project_meta_eq() {
+        let a = ProjectMeta {
+            id: "p1".into(),
+            name: "Test".into(),
+            created_at: "2026-01-01".into(),
+            updated_at: "2026-01-02".into(),
+            chapter_count: 3,
+            total_words: 1000,
+        };
+        let b = ProjectMeta {
+            id: "p1".into(),
+            name: "Test".into(),
+            created_at: "2026-01-01".into(),
+            updated_at: "2026-01-02".into(),
+            chapter_count: 3,
+            total_words: 1000,
+        };
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_chapter_data_eq() {
+        let ch = |sort_order: u32| ChapterData {
+            id: "ch1".into(),
+            project_id: "p1".into(),
+            title: "Ch1".into(),
+            text: "text".into(),
+            word_count: 4,
+            sort_order,
+            created_at: "2026-01-01".into(),
+            updated_at: "2026-01-01".into(),
+        };
+        assert_eq!(ch(1), ch(1));
+        assert_ne!(ch(1), ch(2));
+    }
+
+    #[test]
+    fn test_core_error_display() {
+        let e = CoreError::NotFound("chapter ch1".into());
+        assert_eq!(e.to_string(), "Not found: chapter ch1");
+
+        let e = CoreError::AlreadyExists("project p1".into());
+        assert_eq!(e.to_string(), "Already exists: project p1");
+
+        let e = CoreError::InvalidArgument("sort_order must be >= 0".into());
+        assert_eq!(
+            e.to_string(),
+            "Invalid argument: sort_order must be >= 0"
+        );
+
+        let e = CoreError::InvalidState("agent not initialized".into());
+        assert_eq!(e.to_string(), "Invalid state: agent not initialized");
+
+        let e = CoreError::Internal("database connection lost".into());
+        assert_eq!(e.to_string(), "Internal error: database connection lost");
+    }
+
+    #[test]
+    fn test_core_error_eq() {
+        let e1 = CoreError::NotFound("x".into());
+        let e2 = CoreError::NotFound("x".into());
+        assert_eq!(e1, e2);
+
+        let e3 = CoreError::NotFound("y".into());
+        assert_ne!(e1, e3);
     }
 }

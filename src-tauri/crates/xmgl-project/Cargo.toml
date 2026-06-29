@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 xmgl-core = { path = "../xmgl-core" }
 xmgl-memory = { path = "../xmgl-memory" }
+rusqlite.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true

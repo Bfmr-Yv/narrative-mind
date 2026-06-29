@@ -38,6 +38,8 @@ xmgl.db
 projects/
 *.db-journal
 *.db-wal
+*.db-shm
+test_*.db
 
 # Migration marker
 .xmgl_migrated_v4

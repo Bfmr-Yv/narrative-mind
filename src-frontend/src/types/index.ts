@@ -91,6 +91,7 @@ export interface ChapterData {
   title: string;
   text: string;
   word_count: number;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }
