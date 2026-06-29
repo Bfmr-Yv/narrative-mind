@@ -6,7 +6,6 @@ use chrono::Utc;
 use rusqlite::Connection;
 use uuid::Uuid;
 use xmgl_core::{ChapterData, CoreError, CoreResult, ProjectMeta};
-use xmgl_memory;
 
 // =========================================================================
 // MigrationReport
@@ -247,11 +246,29 @@ impl ProjectManager {
 mod tests {
     use super::*;
 
-    fn setup() -> ProjectManager {
-        // 使用临时路径，测试后删除
-        let path = format!("test_xmgl_project_{}.db", Uuid::new_v4());
-        let pm = ProjectManager::new(&path).expect("create ProjectManager");
-        pm
+    /// 测试上下文 — 自动清理临时数据库文件。
+    struct TestContext {
+        pm: ProjectManager,
+        db_path: String,
+    }
+
+    impl Drop for TestContext {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.db_path);
+        }
+    }
+
+    impl std::ops::Deref for TestContext {
+        type Target = ProjectManager;
+        fn deref(&self) -> &Self::Target {
+            &self.pm
+        }
+    }
+
+    fn setup() -> TestContext {
+        let db_path = format!("test_xmgl_project_{}.db", Uuid::new_v4());
+        let pm = ProjectManager::new(&db_path).expect("create ProjectManager");
+        TestContext { pm, db_path }
     }
 
     // ── 项目 CRUD ──
