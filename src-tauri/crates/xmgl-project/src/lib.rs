@@ -225,7 +225,7 @@ impl ProjectManager {
     // ── 内部辅助 ──
 
     fn open(&self) -> CoreResult<Connection> {
-        xmgl_memory::init_db(&self.db_path)
+        xmgl_memory::open_connection(&self.db_path)
     }
 
     fn now_iso() -> String {

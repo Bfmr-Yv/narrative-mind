@@ -11,7 +11,7 @@ import json
 import time
 from typing import Any, Optional
 
-from .config import LLMConfig, TIER_CONFIG, get_config
+from .config import LLMConfig, TIER_CONFIG, get_config, COST_PER_1K_INPUT, COST_PER_1K_OUTPUT
 
 
 class LLMClient:
@@ -108,7 +108,6 @@ class LLMClient:
                     self._last_input_tokens = usage.prompt_tokens or 0
                     self._last_output_tokens = usage.completion_tokens or 0
                     # 粗略成本估算（将在 Phase B 接入 cost_tracker）
-                    from .config import COST_PER_1K_INPUT, COST_PER_1K_OUTPUT
                     self._last_cost = (
                         self._last_input_tokens * COST_PER_1K_INPUT / 1000 +
                         self._last_output_tokens * COST_PER_1K_OUTPUT / 1000
@@ -137,7 +136,13 @@ class LLMClient:
                 else:
                     return {"text": content}
 
-            except Exception:
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as e:
+                # 代码 bug（不应重试）→ 立即抛出
+                if isinstance(e, (AttributeError, TypeError, NameError, ValueError, ImportError)):
+                    raise
+                # 网络/API 错误 → 重试
                 if attempt < self._config.max_retries:
                     time.sleep(0.5 * (attempt + 1))
                     continue

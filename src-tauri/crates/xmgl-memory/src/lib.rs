@@ -49,12 +49,20 @@ pub enum BudgetFuseLevel {
 // 数据库初始化
 // =========================================================================
 
-/// 打开（或创建）SQLite 数据库，启用 WAL 模式 + 外键。
+/// 打开（或创建）SQLite 数据库，启用 WAL 模式 + 外键，并执行 migrations。
 pub fn init_db(path: &str) -> CoreResult<Connection> {
     let conn = Connection::open(path).map_err(map_err)?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
         .map_err(map_err)?;
     run_migrations(&conn)?;
+    Ok(conn)
+}
+
+/// 仅打开连接，不执行 migrations（用于 ProjectManager 等已在 `new()` 中跑过迁移的场景）。
+pub fn open_connection(path: &str) -> CoreResult<Connection> {
+    let conn = Connection::open(path).map_err(map_err)?;
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
+        .map_err(map_err)?;
     Ok(conn)
 }
 
@@ -409,27 +417,31 @@ pub fn log_cost(conn: &Connection, entry: &CostEntry) -> CoreResult<()> {
 }
 
 /// 获取指定月份的总花费。
+/// 该月份没有任何消费记录时返回 0.0。
 pub fn get_monthly_cost(conn: &Connection, year: i32, month: i32) -> CoreResult<f64> {
-    let spent: f64 = conn
-        .query_row(
-            "SELECT spent_usd FROM monthly_budget WHERE year = ?1 AND month = ?2",
-            params![year, month],
-            |row| row.get(0),
-        )
-        .unwrap_or(0.0);
-    Ok(spent)
+    match conn.query_row(
+        "SELECT spent_usd FROM monthly_budget WHERE year = ?1 AND month = ?2",
+        params![year, month],
+        |row| row.get(0),
+    ) {
+        Ok(spent) => Ok(spent),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(0.0),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 /// 获取月度预算上限（默认 $20）。
+/// 该月份没有设置预算时返回默认值 $20。
 pub fn get_monthly_budget(conn: &Connection, year: i32, month: i32) -> CoreResult<f64> {
-    let budget: f64 = conn
-        .query_row(
-            "SELECT budget_usd FROM monthly_budget WHERE year = ?1 AND month = ?2",
-            params![year, month],
-            |row| row.get(0),
-        )
-        .unwrap_or(20.0);
-    Ok(budget)
+    match conn.query_row(
+        "SELECT budget_usd FROM monthly_budget WHERE year = ?1 AND month = ?2",
+        params![year, month],
+        |row| row.get(0),
+    ) {
+        Ok(budget) => Ok(budget),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(20.0),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 /// 设置月度预算上限。
