@@ -19,3 +19,10 @@ export {
   updateChapter,
   deleteChapter,
 } from "./chapters";
+
+export {
+  onAgentProgress,
+  onProposalReady,
+  onAnalysisComplete,
+} from "./events";
+export type { AgentProgress, ProposalReady, AnalysisComplete } from "./events";
