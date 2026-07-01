@@ -78,7 +78,7 @@ pub fn delete_chapter(state: State<'_, AppState>, id: String) -> Result<(), Stri
 // ── Python Bridge ──
 
 #[tauri::command]
-pub async fn health_check(state: State<'_, AppState>) -> Result<(bool, String, u64), String> {
+pub async fn health_check(state: State<'_, AppState>) -> Result<(bool, bool, String), String> {
     let mut bridge = state.python_bridge.lock().await;
     bridge.health_check().await.map_err(|e| e.to_string())
 }

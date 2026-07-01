@@ -83,12 +83,14 @@ pub struct CorpusSlice {
     pub metadata: Option<HashMap<String, String>>,
 }
 
-/// 健康检查响应。
+/// 健康检查响应（对齐 Python `/v1/llm/health` 返回格式）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthStatus {
-    pub ok: bool,
-    pub python_version: String,
-    pub uptime_seconds: u64,
+    pub status: String,
+    #[serde(default)]
+    pub llm_available: bool,
+    #[serde(default)]
+    pub model: String,
 }
 
 // =========================================================================
@@ -142,9 +144,8 @@ impl PythonBridge {
 
     /// 健康检查。
     ///
-    /// 返回 `(ok, python_version, uptime_seconds)`。
-    /// 注意：即使健康检查也计入连续失败统计。
-    pub async fn health_check(&mut self) -> CoreResult<(bool, String, u64)> {
+    /// 返回 `(ok, llm_available, model)`。
+    pub async fn health_check(&mut self) -> CoreResult<(bool, bool, String)> {
         let url = format!("{}/v1/llm/health", self.base_url);
 
         match self.client.get(&url).send().await {
@@ -152,13 +153,16 @@ impl PythonBridge {
                 if resp.status().is_success() {
                     self.consecutive_failures = 0;
                     if let Ok(body) = resp.json::<HealthStatus>().await {
-                        return Ok((body.ok, body.python_version, body.uptime_seconds));
+                        let ok = body.status == "ok";
+                        let llm_available = body.llm_available;
+                        let model = body.model;
+                        return Ok((ok, llm_available, model));
                     }
                     // 解析失败也视为 OK
-                    Ok((true, "unknown".into(), 0))
+                    Ok((true, false, "unknown".into()))
                 } else {
                     self.record_failure();
-                    Ok((false, "unknown".into(), 0))
+                    Ok((false, false, "unknown".into()))
                 }
             }
             Err(e) => {
@@ -229,10 +233,10 @@ impl PythonBridge {
         let result = self.post_with_retry(&url, &body).await?;
 
         result
-            .get("rendered")
+            .get("user_message")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .ok_or_else(|| CoreError::Internal("missing 'rendered' field in prompt response".into()))
+            .ok_or_else(|| CoreError::Internal("missing 'user_message' field in prompt response".into()))
     }
 
     /// 语料检索。
@@ -246,7 +250,7 @@ impl PythonBridge {
         let url = format!("{}/v1/corpus/search", self.base_url);
 
         let body = serde_json::json!({
-            "query": query,
+            "query_text": query,
             "top_k": top_k,
         });
 
