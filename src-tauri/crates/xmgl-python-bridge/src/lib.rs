@@ -72,6 +72,15 @@ pub struct BatchLLMResponse {
     pub total_latency_ms: u32,
 }
 
+/// Prompt 渲染结果。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenderedPrompt {
+    pub prompt_key: String,
+    pub system_prompt: String,
+    pub user_message: String,
+    pub task_type: String,
+}
+
 /// 语料切片（语料检索返回）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorpusSlice {
@@ -215,14 +224,14 @@ impl PythonBridge {
         Ok(response)
     }
 
-    /// 渲染 Prompt 模板。
+    /// 渲染 Prompt 模板，返回 system_prompt + user_message。
     ///
     /// `variables` 为模板变量键值对。
     pub async fn render_prompt(
         &mut self,
         prompt_key: &str,
         variables: &HashMap<String, String>,
-    ) -> CoreResult<String> {
+    ) -> CoreResult<RenderedPrompt> {
         let url = format!("{}/v1/prompts/render", self.base_url);
 
         let body = serde_json::json!({
@@ -232,11 +241,40 @@ impl PythonBridge {
 
         let result = self.post_with_retry(&url, &body).await?;
 
-        result
-            .get("user_message")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| CoreError::Internal("missing 'user_message' field in prompt response".into()))
+        let rendered: RenderedPrompt = serde_json::from_value(result)
+            .map_err(|e| CoreError::Internal(format!("deserialize RenderedPrompt: {e}")))?;
+
+        Ok(rendered)
+    }
+
+    /// Agent 统一调用: render prompt → call LLM → 返回结果。
+    ///
+    /// `prompt_key` 对应 Python 注册表中的 prompt key。
+    /// `variables` 为模板变量。
+    /// `task_type` 为任务类型（用于 tier 判断和成本记录）。
+    pub async fn call_agent(
+        &mut self,
+        prompt_key: &str,
+        variables: &HashMap<String, String>,
+        task_type: &str,
+    ) -> CoreResult<LLMCallResponse> {
+        let rendered = self.render_prompt(prompt_key, variables).await?;
+
+        let tt: TaskType = task_type
+            .parse()
+            .map_err(|e| CoreError::Internal(format!("unknown task_type '{task_type}': {e}")))?;
+
+        let req = LLMCallRequest {
+            request_id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
+            task_type: tt,
+            system_prompt_key: prompt_key.to_string(),
+            user_message: rendered.user_message,
+            response_format: "json".into(),
+            temperature_override: None,
+            max_tokens_override: None,
+        };
+
+        self.call_llm(&req).await
     }
 
     /// 语料检索。

@@ -6,6 +6,8 @@
 pub mod commands;
 
 use tokio::sync::Mutex;
+use xmgl_agent::AgentRegistry;
+use xmgl_orchestrator::Orchestrator;
 use xmgl_project::ProjectManager;
 use xmgl_python_bridge::PythonBridge;
 
@@ -23,6 +25,8 @@ use xmgl_python_bridge::PythonBridge;
 pub struct AppState {
     pub project_manager: ProjectManager,
     pub python_bridge: Mutex<PythonBridge>,
+    pub agent_registry: AgentRegistry,
+    pub orchestrator: Orchestrator,
 }
 
 impl AppState {
@@ -37,6 +41,8 @@ impl AppState {
         Ok(Self {
             project_manager,
             python_bridge: Mutex::new(python_bridge),
+            agent_registry: AgentRegistry::with_all_agents(),
+            orchestrator: Orchestrator::new(),
         })
     }
 }
@@ -64,36 +70,36 @@ pub mod events {
 // main.rs 集成参考（Phase B）
 // =========================================================================
 
-/// Phase B 的 `main.rs` 应类似：
-///
-/// ```ignore
-/// use xmgl_tauri::{AppState, commands};
-///
-/// fn main() {
-///     let app_state = AppState::new("xmgl.db", None)
-///         .expect("应用初始化失败");
-///
-///     tauri::Builder::default()
-///         .manage(app_state)
-///         .invoke_handler(tauri::generate_handler![
-///             commands::list_projects,
-///             commands::create_project,
-///             commands::get_project,
-///             commands::delete_project,
-///             commands::list_chapters,
-///             commands::create_chapter,
-///             commands::get_chapter,
-///             commands::update_chapter,
-///             commands::delete_chapter,
-///             commands::health_check,
-///         ])
-///         .run(tauri::generate_context!())
-///         .expect("无法启动 Tauri 应用");
-/// }
-/// ```
-///
-/// Phase D 接入 Orchestrator 后追加 agent:progress / proposal:ready
-/// / analysis:complete 事件的 emit 逻辑。
+// Phase B 的 `main.rs` 应类似：
+//
+// ```ignore
+// use xmgl_tauri::{AppState, commands};
+//
+// fn main() {
+//     let app_state = AppState::new("xmgl.db", None)
+//         .expect("应用初始化失败");
+//
+//     tauri::Builder::default()
+//         .manage(app_state)
+//         .invoke_handler(tauri::generate_handler![
+//             commands::list_projects,
+//             commands::create_project,
+//             commands::get_project,
+//             commands::delete_project,
+//             commands::list_chapters,
+//             commands::create_chapter,
+//             commands::get_chapter,
+//             commands::update_chapter,
+//             commands::delete_chapter,
+//             commands::health_check,
+//         ])
+//         .run(tauri::generate_context!())
+//         .expect("无法启动 Tauri 应用");
+// }
+// ```
+//
+// Phase D 接入 Orchestrator 后追加 agent:progress / proposal:ready
+// / analysis:complete 事件的 emit 逻辑。
 
 // =========================================================================
 // Tests

@@ -3,6 +3,7 @@
 //! 所有 crate 依赖的基础类型（serde + thiserror）。
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 // =========================================================================
@@ -69,6 +70,21 @@ impl AgentId {
             AgentId::ReaderExpectation => "预期 Agent",
             AgentId::Conception => "构思 Agent",
             AgentId::EditorInChief => "总编 Agent",
+        }
+    }
+
+    /// 返回该 Agent 默认对应的 TaskType 的字符串表示。
+    pub fn as_task_type_str(&self) -> &'static str {
+        match self {
+            AgentId::Character => "pad_compute",
+            AgentId::World => "rule_check",
+            AgentId::Narrative => "foreshadow_detect",
+            AgentId::Prose => "style_check",
+            AgentId::Theme => "theme_extract",
+            AgentId::Economy => "economy_check",
+            AgentId::ReaderExpectation => "expectation_analyze",
+            AgentId::Conception => "imagery_detect",
+            AgentId::EditorInChief => "scene_analysis",
         }
     }
 
@@ -150,6 +166,33 @@ impl TaskType {
             TaskType::EconomyCheck => "economy_check",
             TaskType::ExpectationAnalyze => "expectation_analyze",
             TaskType::ImageryDetect => "imagery_detect",
+        }
+    }
+}
+
+impl FromStr for TaskType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pad_compute" => Ok(TaskType::PadCompute),
+            "action_infer" => Ok(TaskType::ActionInfer),
+            "rule_check" => Ok(TaskType::RuleCheck),
+            "spatial_check" => Ok(TaskType::SpatialCheck),
+            "rerank" => Ok(TaskType::Rerank),
+            "entity_extract" => Ok(TaskType::EntityExtract),
+            "scene_analysis" => Ok(TaskType::SceneAnalysis),
+            "foreshadow_detect" => Ok(TaskType::ForeshadowDetect),
+            "causal_extract" => Ok(TaskType::CausalExtract),
+            "resolution_check" => Ok(TaskType::ResolutionCheck),
+            "event_predict" => Ok(TaskType::EventPredict),
+            "style_check" => Ok(TaskType::StyleCheck),
+            "register_check" => Ok(TaskType::RegisterCheck),
+            "theme_extract" => Ok(TaskType::ThemeExtract),
+            "economy_check" => Ok(TaskType::EconomyCheck),
+            "expectation_analyze" => Ok(TaskType::ExpectationAnalyze),
+            "imagery_detect" => Ok(TaskType::ImageryDetect),
+            _ => Err(format!("unknown TaskType: {s}")),
         }
     }
 }
@@ -288,7 +331,15 @@ mod tests {
         ] {
             let s = task.as_str();
             assert!(!s.is_empty());
+            let roundtrip: TaskType = s.parse().unwrap();
+            assert_eq!(&roundtrip, task);
         }
+    }
+
+    #[test]
+    fn test_task_type_from_str_invalid() {
+        let result: Result<TaskType, _> = "nonexistent".parse();
+        assert!(result.is_err());
     }
 
     #[test]

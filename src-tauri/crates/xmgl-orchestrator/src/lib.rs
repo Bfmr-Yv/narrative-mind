@@ -3,7 +3,9 @@
 //! Phase B: 定义调度类型与枚举，骨架 Orchestrator。
 //! Phase C: 填充复杂度预判、拓扑选择、Hermes Council 协议实现。
 
-use xmgl_core::{AgentId, TaskComplexity, TaskType};
+use xmgl_core::{AgentId, CoreResult, TaskComplexity, TaskType};
+use xmgl_agent::{AgentRegistry, SharedContext};
+use xmgl_python_bridge::PythonBridge;
 
 // =========================================================================
 // Agent 拓扑
@@ -104,6 +106,17 @@ pub enum ConflictSeverity {
 // Orchestrator 骨架
 // =========================================================================
 
+/// 单次分析执行结果。
+#[derive(Debug, Clone)]
+pub struct AnalysisResult {
+    /// 每个 Agent 的产出 (AgentId, output_json)
+    pub agent_outputs: Vec<(AgentId, String)>,
+    /// 选取的拓扑
+    pub topology: AgentTopology,
+    /// 任务复杂度
+    pub complexity: TaskComplexity,
+}
+
 /// 调度中心 — Phase B 骨架。
 ///
 /// Phase C 填充：复杂度预判、拓扑选择、实际调度逻辑。
@@ -175,6 +188,50 @@ impl Orchestrator {
     /// Phase C: 实现加权评分 + 总编裁决。
     pub fn resolve_conflict(&self, conflict: &AgentConflict) -> String {
         conflict.proposal_a.clone()
+    }
+
+    /// 执行一次分析。
+    ///
+    /// 根据任务复杂度选择拓扑，依次（或并行）调用 Agent，
+    /// 将结果记录到 SharedContext 并返回。
+    pub async fn run_analysis(
+        &self,
+        request: &AnalysisRequest,
+        ctx: &mut SharedContext,
+        registry: &AgentRegistry,
+        bridge: &mut PythonBridge,
+    ) -> CoreResult<AnalysisResult> {
+        let text_length = ctx.chapter_text.len();
+        let complexity = self.predict_complexity(request.task_type, text_length);
+        let topology = self.select_topology(request.task_type, complexity);
+
+        let agent_ids = topology.agent_ids();
+        let mut outputs = Vec::new();
+
+        for agent_id in &agent_ids {
+            if let Some(agent) = registry.get(*agent_id) {
+                if agent.enabled() {
+                    match agent.analyze(ctx, bridge).await {
+                        Ok(output) => {
+                            ctx.record_output(*agent_id, output.clone());
+                            outputs.push((*agent_id, output));
+                        }
+                        Err(e) => {
+                            // Agent 失败不阻塞其他 Agent，记录错误
+                            let err_msg = format!("{{\"error\": \"{e}\"}}");
+                            ctx.record_output(*agent_id, err_msg.clone());
+                            outputs.push((*agent_id, err_msg));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(AnalysisResult {
+            agent_outputs: outputs,
+            topology,
+            complexity,
+        })
     }
 
     fn default_agent_for(&self, task_type: TaskType) -> AgentId {
@@ -294,5 +351,53 @@ mod tests {
             orch.default_agent_for(TaskType::ThemeExtract),
             AgentId::Theme
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_analysis_topology_selection() {
+        let orch = Orchestrator::new();
+        let registry = AgentRegistry::with_all_agents();
+        let mut bridge = PythonBridge::new(Some("http://127.0.0.1:1")).unwrap(); // 不可达端口
+        let mut ctx = SharedContext::new("p1", "测试文本");
+
+        let request = AnalysisRequest {
+            request_id: "req-test".into(),
+            task_type: TaskType::PadCompute,
+            trigger: AnalysisTrigger::Manual,
+            chapter_ids: vec![],
+            context_note: None,
+        };
+
+        // 即使 sidecar 不可达，拓扑选择和流程应正确执行
+        // Agent 会报错但不阻塞其他 Agent
+        let result = orch.run_analysis(&request, &mut ctx, &registry, &mut bridge).await;
+        // 结果可能是 Ok（带错误输出）或 Err（bridge 级别错误）
+        // 两种都是可接受的
+        match result {
+            Ok(ar) => {
+                // predict_complexity 返回 Moderate → Serial 拓扑
+                assert!(matches!(ar.topology, AgentTopology::Serial { .. }));
+                // Serial 拓扑有 3 个 Agent (Character, Narrative, Prose)
+                assert_eq!(ar.agent_outputs.len(), 3);
+                // 所有输出应包含错误信息（sidecar 不可达）
+                for (_, output) in &ar.agent_outputs {
+                    assert!(output.contains("error"));
+                }
+            }
+            Err(_) => {
+                // bridge 级别错误也是可接受的
+            }
+        }
+    }
+
+    #[test]
+    fn test_analysis_result_fields() {
+        let result = AnalysisResult {
+            agent_outputs: vec![(AgentId::Character, "{}".into())],
+            topology: AgentTopology::Single(AgentId::Character),
+            complexity: TaskComplexity::Simple,
+        };
+        assert_eq!(result.agent_outputs.len(), 1);
+        assert_eq!(result.complexity, TaskComplexity::Simple);
     }
 }

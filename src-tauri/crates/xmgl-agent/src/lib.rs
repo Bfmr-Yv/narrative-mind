@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
+use xmgl_python_bridge::PythonBridge;
 use xmgl_core::{AgentId, CoreResult, ModelTier};
 
 // =========================================================================
@@ -76,13 +77,15 @@ pub trait Agent: Send + Sync {
     /// 执行分析。
     ///
     /// `ctx` 包含当前项目/章节信息及前序 Agent 产出。
+    /// `bridge` 为 Python sidecar HTTP 客户端，用于调用 LLM。
     /// 返回分析结果文本（通常为 JSON）。
-    ///
-    /// Phase B: 返回占位结果。
-    /// Phase C: 实际调用 Python sidecar 进行 LLM 分析。
-    async fn analyze(&self, _ctx: &SharedContext, _input: &str) -> CoreResult<String> {
-        Ok(format!("[{}] analysis stub — Phase C", self.name()))
-    }
+    async fn analyze(&self, ctx: &SharedContext, bridge: &mut PythonBridge) -> CoreResult<String>;
+
+    /// Agent 使用的 prompt key（对应 Python 注册表）。
+    fn prompt_key(&self) -> &'static str;
+
+    /// 构造 prompt 模板变量。
+    fn build_variables(&self, ctx: &SharedContext) -> HashMap<String, String>;
 
     /// 是否启用（可在运行时关闭）。
     fn enabled(&self) -> bool {
@@ -163,7 +166,7 @@ impl Default for AgentRegistry {
 // =========================================================================
 
 macro_rules! agent_stub {
-    ($name:ident, $id:expr, $display:expr, $tier:expr) => {
+    ($name:ident, $id:expr, $display:expr, $tier:expr, $prompt_key:expr) => {
         pub struct $name;
 
         #[async_trait]
@@ -179,19 +182,41 @@ macro_rules! agent_stub {
             fn model_tier(&self) -> ModelTier {
                 $tier
             }
+
+            fn prompt_key(&self) -> &'static str {
+                $prompt_key
+            }
+
+            fn build_variables(&self, ctx: &SharedContext) -> HashMap<String, String> {
+                let mut vars = HashMap::new();
+                vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+                vars
+            }
+
+            async fn analyze(&self, ctx: &SharedContext, bridge: &mut PythonBridge) -> CoreResult<String> {
+                let vars = self.build_variables(ctx);
+                let response = bridge.call_agent(self.prompt_key(), &vars, $id.as_task_type_str()).await?;
+                if response.success {
+                    Ok(response.result.map(|v| v.to_string()).unwrap_or_default())
+                } else {
+                    Err(xmgl_core::CoreError::Internal(
+                        response.error.unwrap_or_else(|| "LLM call failed".into()),
+                    ))
+                }
+            }
         }
     };
 }
 
-agent_stub!(CharacterAgent, AgentId::Character, "角色 Agent", ModelTier::Pro);
-agent_stub!(WorldAgent, AgentId::World, "世界 Agent", ModelTier::Flash);
-agent_stub!(NarrativeAgent, AgentId::Narrative, "叙事 Agent", ModelTier::Pro);
-agent_stub!(ProseAgent, AgentId::Prose, "文辞 Agent", ModelTier::Flash);
-agent_stub!(ThemeAgent, AgentId::Theme, "主题 Agent", ModelTier::Pro);
-agent_stub!(EconomyAgent, AgentId::Economy, "经济 Agent", ModelTier::Flash);
-agent_stub!(ReaderExpectationAgent, AgentId::ReaderExpectation, "预期 Agent", ModelTier::Flash);
-agent_stub!(ConceptionAgent, AgentId::Conception, "构思 Agent", ModelTier::Flash);
-agent_stub!(EditorInChiefAgent, AgentId::EditorInChief, "总编 Agent", ModelTier::Pro);
+agent_stub!(CharacterAgent, AgentId::Character, "角色 Agent", ModelTier::Pro, "pad_compute");
+agent_stub!(WorldAgent, AgentId::World, "世界 Agent", ModelTier::Flash, "rule_check");
+agent_stub!(NarrativeAgent, AgentId::Narrative, "叙事 Agent", ModelTier::Pro, "foreshadow_detect");
+agent_stub!(ProseAgent, AgentId::Prose, "文辞 Agent", ModelTier::Flash, "style_check");
+agent_stub!(ThemeAgent, AgentId::Theme, "主题 Agent", ModelTier::Pro, "theme_extract");
+agent_stub!(EconomyAgent, AgentId::Economy, "经济 Agent", ModelTier::Flash, "economy_check");
+agent_stub!(ReaderExpectationAgent, AgentId::ReaderExpectation, "预期 Agent", ModelTier::Flash, "expectation_analyze");
+agent_stub!(ConceptionAgent, AgentId::Conception, "构思 Agent", ModelTier::Flash, "imagery_detect");
+agent_stub!(EditorInChiefAgent, AgentId::EditorInChief, "总编 Agent", ModelTier::Pro, "scene_analysis");
 
 // =========================================================================
 // Tests
@@ -259,6 +284,29 @@ mod tests {
     #[test]
     fn test_agent_enabled_default() {
         assert!(CharacterAgent.enabled());
+    }
+
+    #[test]
+    fn test_agent_prompt_keys() {
+        assert_eq!(CharacterAgent.prompt_key(), "pad_compute");
+        assert_eq!(WorldAgent.prompt_key(), "rule_check");
+        assert_eq!(NarrativeAgent.prompt_key(), "foreshadow_detect");
+        assert_eq!(EditorInChiefAgent.prompt_key(), "scene_analysis");
+    }
+
+    #[test]
+    fn test_agent_build_variables() {
+        let ctx = SharedContext::new("p1", "测试文本内容");
+        let vars = CharacterAgent.build_variables(&ctx);
+        assert_eq!(vars.get("chapter_text").unwrap(), "测试文本内容");
+    }
+
+    #[test]
+    fn test_agent_id_as_task_type_str() {
+        assert_eq!(AgentId::Character.as_task_type_str(), "pad_compute");
+        assert_eq!(AgentId::World.as_task_type_str(), "rule_check");
+        assert_eq!(AgentId::Narrative.as_task_type_str(), "foreshadow_detect");
+        assert_eq!(AgentId::Theme.as_task_type_str(), "theme_extract");
     }
 
     // ── AgentRegistry ──

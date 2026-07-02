@@ -11,3 +11,6 @@ xmgl-memory = { path = "../xmgl-memory" }
 xmgl-python-bridge = { path = "../xmgl-python-bridge" }
 tokio.workspace = true
 async-trait.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

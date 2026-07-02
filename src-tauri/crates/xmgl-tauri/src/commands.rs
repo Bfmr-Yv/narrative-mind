@@ -4,7 +4,9 @@
 
 use crate::AppState;
 use tauri::State;
-use xmgl_core::{ChapterData, ProjectMeta};
+use xmgl_core::{ChapterData, ProjectMeta, TaskType};
+use xmgl_agent::SharedContext;
+use xmgl_orchestrator::{AnalysisRequest, AnalysisTrigger};
 
 // ── 项目 ──
 
@@ -81,4 +83,82 @@ pub fn delete_chapter(state: State<'_, AppState>, id: String) -> Result<(), Stri
 pub async fn health_check(state: State<'_, AppState>) -> Result<(bool, bool, String), String> {
     let mut bridge = state.python_bridge.lock().await;
     bridge.health_check().await.map_err(|e| e.to_string())
+}
+
+// ── 分析 ──
+
+/// 分析结果（前端友好格式）
+#[derive(serde::Serialize)]
+pub struct AnalysisOutput {
+    pub request_id: String,
+    pub agent_outputs: Vec<AgentOutput>,
+    pub topology: String,
+    pub complexity: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct AgentOutput {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub output: String,
+}
+
+/// 触发一次 Agent 分析。
+///
+/// `task_type` 为分析类型（如 "pad_compute"、"entity_extract"）。
+/// 系统根据复杂度自动选择拓扑，调用相应 Agent，返回分析结果。
+#[tauri::command]
+pub async fn run_analysis(
+    state: State<'_, AppState>,
+    chapter_id: String,
+    task_type: String,
+) -> Result<AnalysisOutput, String> {
+    // 1. 加载章节文本
+    let chapter = state
+        .project_manager
+        .get_chapter(&chapter_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("chapter not found: {chapter_id}"))?;
+
+    // 2. 构建上下文
+    let mut ctx = SharedContext::new(&chapter.project_id, &chapter.text)
+        .with_chapter(&chapter_id);
+
+    // 3. 构建请求
+    let tt: TaskType = task_type.parse().map_err(|e: String| e)?;
+    let request = AnalysisRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        task_type: tt,
+        trigger: AnalysisTrigger::Manual,
+        chapter_ids: vec![chapter_id],
+        context_note: None,
+    };
+
+    // 4. 执行分析
+    let mut bridge = state.python_bridge.lock().await;
+    let result = state
+        .orchestrator
+        .run_analysis(&request, &mut ctx, &state.agent_registry, &mut bridge)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 5. 转换为前端友好格式
+    let topology = format!("{:?}", result.topology);
+    let complexity = format!("{:?}", result.complexity);
+    let agent_outputs = result
+        .agent_outputs
+        .into_iter()
+        .map(|(id, output)| AgentOutput {
+            agent_id: format!("{id:?}"),
+            agent_name: id.name().to_string(),
+            output,
+        })
+        .collect();
+
+    Ok(AnalysisOutput {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        agent_outputs,
+        topology,
+        complexity,
+    })
 }

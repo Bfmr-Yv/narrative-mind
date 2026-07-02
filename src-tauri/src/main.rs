@@ -24,6 +24,7 @@ fn main() {
             commands::update_chapter,
             commands::delete_chapter,
             commands::health_check,
+            commands::run_analysis,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Tauri 应用");

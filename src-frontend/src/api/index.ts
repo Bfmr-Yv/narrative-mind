@@ -26,3 +26,6 @@ export {
   onAnalysisComplete,
 } from "./events";
 export type { AgentProgress, ProposalReady, AnalysisComplete } from "./events";
+
+export { runAnalysis } from "./analysis";
+export type { AnalysisOutput, AgentOutput } from "./analysis";
