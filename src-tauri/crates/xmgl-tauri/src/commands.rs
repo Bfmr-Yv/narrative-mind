@@ -134,7 +134,10 @@ pub async fn run_analysis(
         context_note: None,
     };
 
-    // 4. 执行分析
+    // 4. 保存 request_id 以便复用
+    let request_id = request.request_id.clone();
+
+    // 5. 执行分析
     let mut bridge = state.python_bridge.lock().await;
     let result = state
         .orchestrator
@@ -142,7 +145,7 @@ pub async fn run_analysis(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 5. 转换为前端友好格式
+    // 6. 转换为前端友好格式（复用同一个 request_id）
     let topology = format!("{:?}", result.topology);
     let complexity = format!("{:?}", result.complexity);
     let agent_outputs = result
@@ -156,7 +159,7 @@ pub async fn run_analysis(
         .collect();
 
     Ok(AnalysisOutput {
-        request_id: uuid::Uuid::new_v4().to_string(),
+        request_id,
         agent_outputs,
         topology,
         complexity,
