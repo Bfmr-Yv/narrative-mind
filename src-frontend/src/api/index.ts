@@ -11,6 +11,7 @@ export {
   getProject,
   deleteProject,
 } from "./projects";
+export type { ProjectMeta } from "./projects";
 
 export {
   listChapters,
@@ -19,6 +20,7 @@ export {
   updateChapter,
   deleteChapter,
 } from "./chapters";
+export type { ChapterData } from "./chapters";
 
 export {
   onAgentProgress,

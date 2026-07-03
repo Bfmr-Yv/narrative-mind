@@ -1,0 +1,95 @@
+﻿
+=== 1. 鏂囦欢瀛樺湪鎬?===
+鉁?config/llm.json 瀛樺湪
+鉁?src-python/main.py 瀛樺湪
+鉁?src-python/llm/client.py 瀛樺湪
+鉁?src-python/llm/config.py 瀛樺湪
+鉁?src-frontend/src/api/analysis.ts 瀛樺湪
+鉁?src-frontend/src/api/events.ts 瀛樺湪
+
+=== 2. Rust LLMCallRequest 缁撴瀯 ===
+鉁?LLMCallRequest 鏈?system_prompt_key 瀛楁
+鉁?LLMCallRequest 鏈?system_prompt 瀛楁
+鉁?call_agent 濉厖 system_prompt
+鉁?call_agent 濉厖 user_message
+
+=== 3. Python main.py ===
+鉁?LLMCallRequest 鏈?system_prompt 瀛楁
+鉁?llm_call 浣跨敤 system_prompt
+鉁?llm_call 涓嶇洿鎺ョ敤 system_prompt_key 浣滀负 prompt
+鉁?health 绔偣杩斿洖 llm_available
+鉁?health 绔偣杩斿洖 model
+
+=== 4. Python config.py ===
+鉁?config.py 鏈?MiMo provider
+鉁?config.py 鏈?MiMo Pro 妯″瀷
+鉁?config.py 鏈?MiMo Flash 妯″瀷
+鉁?config.py 鏀寔 MIMO_API_KEY 鐜鍙橀噺
+鉁?get_config 浠庢枃浠舵娴?provider
+
+=== 5. config/llm.json ===
+鉁?llm.json provider 鏄?mimo
+鉁?llm.json base_url 鏄?MiMo Token Plan
+鉁?llm.json api_key 涓嶄负绌?鉁?llm.json model 鏄?mimo-v2.5-pro
+
+=== 6. Orchestrator ===
+鉁?predict_complexity 鏈夋枃鏈暱搴﹀垽鏂?鉁?predict_complexity 鏈変换鍔＄被鍨嬬害鏉?鉁?upgrade_topology 瀛樺湪
+鉁?run_analysis 鏈?HCP-MAD 鍗囩骇閫昏緫
+鉁?default_agent_for 瑕嗙洊 Rerank
+鉁?default_agent_for 瑕嗙洊 EntityExtract
+鉁?default_agent_for 瑕嗙洊 SpatialCheck
+
+=== 7. Agent ===
+鉁?SharedContext 鏈?metadata 瀛楁
+鉁?SharedContext 鏈?chapter_title 瀛楁
+鉁?collect_prior_outputs 瀛樺湪
+鉁?EditorInChiefAgent 姹囨€诲墠搴忚緭鍑?鉁?NarrativeAgent 璇诲彇 CharacterAgent 杈撳嚭
+鉁?EconomyAgent 浼?word_count
+鉁?鏈?9 涓?agent_impl 璋冪敤
+
+=== 8. Tauri Commands ===
+鉁?run_analysis 澶嶇敤 request_id
+鉁?run_analysis 鏋勫缓 SharedContext
+鉁?main.rs 娉ㄥ唽 run_analysis
+
+=== 9. 鍓嶇 ===
+鉁?analysis.ts 瀵煎嚭 runAnalysis
+鉁?analysis.ts 瀵煎嚭 AnalysisOutput 绫诲瀷
+鉁?events.ts 瀵煎嚭 onAgentProgress
+鉁?events.ts 瀵煎嚭 onProposalReady
+鉁?events.ts 瀵煎嚭 onAnalysisComplete
+鉁?index.ts 瀵煎嚭 analysis 妯″潡
+鉁?index.ts 瀵煎嚭 events 妯″潡
+
+=== 10. 璺ㄦ枃浠朵竴鑷存€?===
+鉁?Python health 杩斿洖瀛楁涓?Rust HealthStatus 涓€鑷?鉁?Python CorpusSearchRequest 瀛楁鍚嶄笌 Rust 涓€鑷?鉁?Python RenderedPrompt 瀛楁涓?Rust 涓€鑷?
+==================================================
+鎬昏: 51 閫氳繃, 0 澶辫触
+==================================================
+node : node:fs:2413
+所在位置 行:1 字符: 1
++ node verify.js 2>&1 | Out-File verify_results.txt -Encoding utf8
++ ~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (node:fs:2413:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    return binding.writeFileUtf8(
+                   ^
+
+Error: EBUSY: resource busy or locked, open 'C:\Users\userf\Desktop\narrative-mind\verify_results.txt'
+    at Object.writeFileSync (node:fs:2413:20)
+    at Object.<anonymous> (C:\Users\userf\Desktop\narrative-mind\verify.js:285:4)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\userf\\Desktop\\narrative-mind\\verify_results.txt'
+}
+
+Node.js v24.14.0

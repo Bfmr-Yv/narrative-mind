@@ -1,0 +1,13 @@
+src-tauri/crates/xmgl-python-bridge/src/lib.rs | 452 lines | 14325 bytes
+src-tauri/crates/xmgl-orchestrator/src/lib.rs | 680 lines | 22210 bytes
+src-tauri/crates/xmgl-agent/src/lib.rs | 527 lines | 16940 bytes
+src-tauri/crates/xmgl-tauri/src/commands.rs | 168 lines | 4545 bytes
+src-tauri/crates/xmgl-tauri/src/lib.rs | 138 lines | 4659 bytes
+src-tauri/crates/xmgl-memory/src/lib.rs | 813 lines | 25075 bytes
+src-tauri/src/main.rs | 32 lines | 952 bytes
+src-python/main.py | 279 lines | 7798 bytes
+src-python/llm/client.py | 175 lines | 5454 bytes
+src-python/llm/config.py | 263 lines | 8853 bytes
+src-frontend/src/api/analysis.ts | 38 lines | 683 bytes
+src-frontend/src/api/events.ts | 44 lines | 1232 bytes
+src-frontend/src/api/index.ts | 32 lines | 602 bytes

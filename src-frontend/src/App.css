@@ -1,5 +1,4 @@
-/* Narrative Mind v4.0 — 基础布局样式 */
-/* Phase A: 布局骨架 */
+/* Narrative Mind v4.0 — 全局样式 */
 
 * {
   margin: 0;
@@ -7,168 +6,65 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Microsoft YaHei", "Helvetica Neue", sans-serif;
-  background: #1e1e1e;
-  color: #cccccc;
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #333;
+  background: #fff;
 }
 
-.app-container {
-  display: flex;
-  flex-direction: column;
+.app {
   height: 100vh;
-  width: 100vw;
-}
-
-/* 标题栏 */
-.titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 36px;
-  padding: 0 12px;
-  background: #2d2d30;
-  border-bottom: 1px solid #3e3e42;
-  -webkit-app-region: drag;
-  user-select: none;
-}
-
-.titlebar-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #e0e0e0;
-}
-
-.titlebar-agent-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #888;
-}
-
-.agent-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #4ec9b0;
-}
-
-.agent-indicator.inactive {
-  background: #555;
-}
-
-.agent-indicator.busy {
-  background: #dcdcaa;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-/* 主体区域 */
-.main-area {
-  display: flex;
-  flex: 1;
   overflow: hidden;
 }
 
-/* 左侧边栏 */
-.left-sidebar {
-  width: 48px;
-  min-width: 48px;
-  background: #252526;
-  border-right: 1px solid #3e3e42;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 8px;
-  gap: 4px;
+/* Agent 标注样式 */
+.agent-annotation {
+  border-radius: 2px;
 }
 
-.sidebar-icon {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  font-size: 16px;
-  color: #888;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+.agent-info {
+  border-bottom: 2px solid rgba(66, 133, 244, 0.6);
 }
 
-.sidebar-icon:hover {
-  background: #37373d;
-  color: #ccc;
+.agent-warn {
+  border-bottom: 2px wavy rgba(251, 188, 4, 0.6);
 }
 
-.sidebar-icon.active {
-  background: #37373d;
-  color: #4ec9b0;
+.agent-critical {
+  border-bottom: 2px wavy rgba(234, 67, 53, 0.6);
 }
 
-/* 编辑器区域 */
-.editor-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #1e1e1e;
+/* 按钮样式 */
+button {
+  transition: background 0.15s ease;
 }
 
-.editor-placeholder {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6b7280;
-  font-size: 14px;
-  user-select: none;
+button:hover:not(:disabled) {
+  background: #e3f2fd !important;
+  border-color: #4285f4 !important;
 }
 
-.editor-placeholder-inner {
-  text-align: center;
+button:active:not(:disabled) {
+  background: #bbdefb !important;
 }
 
-.editor-placeholder-inner h2 {
-  font-size: 20px;
-  margin-bottom: 8px;
-  color: #9ca3af;
-  font-weight: 400;
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.editor-placeholder-inner p {
-  font-size: 12px;
-  color: #555;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* 状态栏 */
-.statusbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 24px;
-  padding: 0 12px;
-  background: #007acc;
-  color: #fff;
-  font-size: 11px;
-  user-select: none;
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
 }
 
-.statusbar-left,
-.statusbar-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
 }
