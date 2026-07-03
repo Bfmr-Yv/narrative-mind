@@ -33,16 +33,27 @@ OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 OPENAI_COST_PER_1K_INPUT = 0.00015
 OPENAI_COST_PER_1K_OUTPUT = 0.00060
 
+# --- Xiaomi MiMo (Token Plan) ---
+MIMO_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1"
+MIMO_PRO_MODEL = "mimo-v2.5-pro"
+MIMO_FLASH_MODEL = "mimo-v2.5"
+MIMO_COST_PER_1K_INPUT = 0.003     # ¥3/MTok ≈ $0.003/1k
+MIMO_COST_PER_1K_OUTPUT = 0.006    # ¥6/MTok ≈ $0.006/1k
+MIMO_FLASH_COST_PER_1K_INPUT = 0.001   # ¥1/MTok
+MIMO_FLASH_COST_PER_1K_OUTPUT = 0.002  # ¥2/MTok
+
 
 def _resolve_provider() -> str:
     """解析当前使用的 LLM provider。
 
-    优先级：环境变量 LLM_PROVIDER > 自动检测
-    自动检测：有 DEEPSEEK_API_KEY → deepseek，否则 → openai
+    优先级：环境变量 LLM_PROVIDER > 配置文件 > 自动检测
+    自动检测：有 DEEPSEEK_API_KEY → deepseek，有 MIMO_API_KEY → mimo，否则 → openai
     """
     explicit = os.environ.get("LLM_PROVIDER", "").strip().lower()
-    if explicit in ("deepseek", "openai"):
+    if explicit in ("deepseek", "openai", "mimo"):
         return explicit
+    if os.environ.get("MIMO_API_KEY"):
+        return "mimo"
     if os.environ.get("DEEPSEEK_API_KEY"):
         return "deepseek"
     return "openai"
@@ -59,6 +70,15 @@ def _init_provider_defaults(provider: str | None = None) -> dict:
             "cost_per_1k_input": DEEPSEEK_COST_PER_1K_INPUT,
             "cost_per_1k_output": DEEPSEEK_COST_PER_1K_OUTPUT,
             "provider": "deepseek",
+        }
+    elif p == "mimo":
+        return {
+            "base_url": MIMO_BASE_URL,
+            "model": MIMO_PRO_MODEL,
+            "flash_model": MIMO_FLASH_MODEL,
+            "cost_per_1k_input": MIMO_COST_PER_1K_INPUT,
+            "cost_per_1k_output": MIMO_COST_PER_1K_OUTPUT,
+            "provider": "mimo",
         }
     else:
         return {
@@ -108,24 +128,27 @@ class TierRoute:
     temperature: float = 0.3
 
 
+# MiMo-V2.5-Pro 是推理模型，输出 tokens 包含推理过程。
+# max_tokens 需要预留推理开销（通常 100-300 tokens），实际内容 = max_tokens - reasoning。
+# 以下值已包含推理余量。
 TIER_CONFIG: dict[str, TierRoute] = {
-    "pad_compute":    TierRoute(model=DEFAULT_MODEL, max_tokens=256,  temperature=0.2),
-    "action_infer":   TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.3),
-    "rule_check":     TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.2),
-    "spatial_check":  TierRoute(model=DEFAULT_MODEL, max_tokens=256,  temperature=0.2),
-    "rerank":         TierRoute(model=DEFAULT_MODEL, max_tokens=256,  temperature=0.1),
-    "entity_extract":     TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.1),
-    "scene_analysis":    TierRoute(model=DEFAULT_MODEL, max_tokens=1024, temperature=0.4),
-    "foreshadow_detect": TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.3),
-    "causal_extract":    TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.2),
-    "resolution_check":  TierRoute(model=DEFAULT_MODEL, max_tokens=256,  temperature=0.2),
-    "event_predict":     TierRoute(model=DEFAULT_MODEL, max_tokens=768,  temperature=0.4),
-    "style_check":       TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.2),
-    "register_check":    TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.3),
-    "theme_extract":     TierRoute(model=DEFAULT_MODEL, max_tokens=768,  temperature=0.4),
-    "economy_check":      TierRoute(model=DEFAULT_MODEL, max_tokens=512,  temperature=0.2),
-    "expectation_analyze": TierRoute(model=DEFAULT_MODEL, max_tokens=768,  temperature=0.4),
-    "imagery_detect":    TierRoute(model=DEFAULT_MODEL, max_tokens=768,  temperature=0.4),
+    "pad_compute":    TierRoute(model=DEFAULT_MODEL, max_tokens=1024, temperature=0.2),
+    "action_infer":   TierRoute(model=DEFAULT_MODEL, max_tokens=1536, temperature=0.3),
+    "rule_check":     TierRoute(model=DEFAULT_MODEL, max_tokens=1536, temperature=0.2),
+    "spatial_check":  TierRoute(model=DEFAULT_MODEL, max_tokens=1024, temperature=0.2),
+    "rerank":         TierRoute(model=DEFAULT_MODEL, max_tokens=1024, temperature=0.1),
+    "entity_extract":     TierRoute(model=DEFAULT_MODEL, max_tokens=1536, temperature=0.1),
+    "scene_analysis":    TierRoute(model=DEFAULT_MODEL, max_tokens=4096, temperature=0.4),
+    "foreshadow_detect": TierRoute(model=DEFAULT_MODEL, max_tokens=2048, temperature=0.3),
+    "causal_extract":    TierRoute(model=DEFAULT_MODEL, max_tokens=2048, temperature=0.2),
+    "resolution_check":  TierRoute(model=DEFAULT_MODEL, max_tokens=1024, temperature=0.2),
+    "event_predict":     TierRoute(model=DEFAULT_MODEL, max_tokens=2048, temperature=0.4),
+    "style_check":       TierRoute(model=DEFAULT_MODEL, max_tokens=1536, temperature=0.2),
+    "register_check":    TierRoute(model=DEFAULT_MODEL, max_tokens=1536, temperature=0.3),
+    "theme_extract":     TierRoute(model=DEFAULT_MODEL, max_tokens=2048, temperature=0.4),
+    "economy_check":      TierRoute(model=DEFAULT_MODEL, max_tokens=1536, temperature=0.2),
+    "expectation_analyze": TierRoute(model=DEFAULT_MODEL, max_tokens=2048, temperature=0.4),
+    "imagery_detect":    TierRoute(model=DEFAULT_MODEL, max_tokens=2048, temperature=0.4),
 }
 
 
@@ -191,14 +214,20 @@ def get_config(
     - LLM_BASE_URL / DEEPSEEK_BASE_URL / OPENAI_BASE_URL: API 地址
     - LLM_MODEL / DEEPSEEK_MODEL / OPENAI_MODEL: 模型名称
     """
-    provider_config = _init_provider_defaults()
     file_config = _load_config_file()
+    # 从配置文件或环境变量检测 provider
+    file_provider = file_config.get("provider", "").strip().lower()
+    if file_provider in ("deepseek", "openai", "mimo"):
+        provider_config = _init_provider_defaults(file_provider)
+    else:
+        provider_config = _init_provider_defaults()
 
     resolved_key = (
         api_key or
         os.environ.get("LLM_API_KEY", "") or
         os.environ.get("DEEPSEEK_API_KEY", "") or
         os.environ.get("OPENAI_API_KEY", "") or
+        os.environ.get("MIMO_API_KEY", "") or
         file_config.get("api_key", "")
     )
 
@@ -216,6 +245,7 @@ def get_config(
         os.environ.get("LLM_MODEL", "") or
         os.environ.get("DEEPSEEK_MODEL", "") or
         os.environ.get("OPENAI_MODEL", "") or
+        os.environ.get("MIMO_MODEL", "") or
         file_config.get("model", "") or
         provider_config["model"]
     )
