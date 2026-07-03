@@ -1,0 +1,20 @@
+﻿cargo :    Compiling xmgl-orchestrator v4.0.0 (C:\Users\userf\Desktop\narrative-mind\src-tauri\crates\xmgl-orchestrator
+)
+所在位置 行:1 字符: 25
++ Set-Location src-tauri; cargo test --workspace 2>&1 | Out-File ..\fin ...
++                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling xm...l-orchestrator):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+   Compiling xmgl-agent v4.0.0 (C:\Users\userf\Desktop\narrative-mind\src-tauri\crates\xmgl-agent)
+   Compiling xmgl-python-bridge v4.0.0 (C:\Users\userf\Desktop\narrative-mind\src-tauri\crates\xmgl-python-bridge)
+   Compiling xmgl-tauri v4.0.0 (C:\Users\userf\Desktop\narrative-mind\src-tauri\crates\xmgl-tauri)
+error[E0063]: missing field `system_prompt` in initializer of `LLMCallRequest`
+   --> crates\xmgl-python-bridge\src\lib.rs:407:19
+    |
+407 |         let req = LLMCallRequest {
+    |                   ^^^^^^^^^^^^^^ missing `system_prompt`
+
+For more information about this error, try `rustc --explain E0063`.
+error: could not compile `xmgl-python-bridge` (lib test) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

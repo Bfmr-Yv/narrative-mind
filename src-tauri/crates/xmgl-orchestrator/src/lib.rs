@@ -385,6 +385,7 @@ impl Orchestrator {
                 AgentId::Character
             }
             TaskType::RuleCheck | TaskType::SpatialCheck => AgentId::World,
+            TaskType::Rerank => AgentId::EditorInChief,
             TaskType::ForeshadowDetect
             | TaskType::CausalExtract
             | TaskType::ResolutionCheck

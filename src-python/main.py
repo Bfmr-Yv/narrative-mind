@@ -65,6 +65,7 @@ class LLMCallRequest(BaseModel):
     request_id: str = ""
     task_type: str
     system_prompt_key: str
+    system_prompt: str = ""
     user_message: str
     response_format: str = "json"
     temperature_override: Optional[float] = None
@@ -103,8 +104,10 @@ async def llm_call(req: LLMCallRequest):
 
     try:
         t0 = time.time()
+        # 优先使用渲染后的 system_prompt，fallback 到 system_prompt_key
+        system_prompt = req.system_prompt if req.system_prompt else req.system_prompt_key
         result = client.call(
-            system_prompt=req.system_prompt_key,
+            system_prompt=system_prompt,
             user_message=req.user_message,
             task_type=req.task_type,
             response_format=req.response_format,

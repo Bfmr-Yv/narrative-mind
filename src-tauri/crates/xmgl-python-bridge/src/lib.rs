@@ -28,6 +28,9 @@ pub struct LLMCallRequest {
     pub request_id: String,
     pub task_type: TaskType,
     pub system_prompt_key: String,
+    /// 渲染后的实际 system prompt 文本（由 call_agent 填充）。
+    #[serde(default)]
+    pub system_prompt: String,
     pub user_message: String,
     #[serde(default = "default_response_format")]
     pub response_format: String,
@@ -268,6 +271,7 @@ impl PythonBridge {
             request_id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
             task_type: tt,
             system_prompt_key: prompt_key.to_string(),
+            system_prompt: rendered.system_prompt,
             user_message: rendered.user_message,
             response_format: "json".into(),
             temperature_override: None,
