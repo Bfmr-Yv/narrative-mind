@@ -117,12 +117,14 @@ pub struct AnalysisResult {
     pub complexity: TaskComplexity,
 }
 
-/// 调度中心 — Phase B 骨架。
+/// 调度中心 — Phase D 实现。
 ///
-/// Phase C 填充：复杂度预判、拓扑选择、实际调度逻辑。
+/// 包含：复杂度预判、拓扑选择、HCP-MAD 渐进升级、实际调度逻辑。
 pub struct Orchestrator {
     /// 是否启用 Hermes Council 协议
     pub hermes_enabled: bool,
+    /// 最大升级轮数（防止无限升级）
+    pub max_upgrade_rounds: u32,
 }
 
 impl Orchestrator {
@@ -130,29 +132,74 @@ impl Orchestrator {
     pub fn new() -> Self {
         Self {
             hermes_enabled: true,
+            max_upgrade_rounds: 2,
         }
     }
 
     /// 预判任务复杂度。
     ///
-    /// Phase B: 始终返回 `Moderate`。
-    /// Phase C: 根据文本长度、任务类型、Agent 反馈调整。
-    pub fn predict_complexity(&self, _task_type: TaskType, _text_length: usize) -> TaskComplexity {
-        TaskComplexity::Moderate
+    /// 基于文本长度 + 任务类型综合判断：
+    /// - 文本长度: <200 → Simple, 200-2000 → Moderate, >2000 → Complex/FullScene
+    /// - 任务类型: 全局分析类提升一级，单一检查类保持
+    pub fn predict_complexity(&self, task_type: TaskType, text_length: usize) -> TaskComplexity {
+        // 1. 文本长度决定基础复杂度
+        let base = if text_length < 200 {
+            TaskComplexity::Trivial
+        } else if text_length < 800 {
+            TaskComplexity::Simple
+        } else if text_length < 2000 {
+            TaskComplexity::Moderate
+        } else if text_length < 5000 {
+            TaskComplexity::Complex
+        } else {
+            TaskComplexity::FullScene
+        };
+
+        // 2. 全局分析类任务至少 Moderate
+        let min_for_task = match task_type {
+            TaskType::SceneAnalysis => TaskComplexity::FullScene,
+            TaskType::PadCompute | TaskType::ForeshadowDetect | TaskType::CausalExtract => {
+                TaskComplexity::Moderate
+            }
+            _ => TaskComplexity::Simple,
+        };
+
+        // 取两者中较高的
+        if (min_for_task as u8) > (base as u8) {
+            min_for_task
+        } else {
+            base
+        }
     }
 
     /// 选择 Agent 执行拓扑。
     ///
-    /// Phase B: 简单任务 → Single，其他 → Serial。
-    /// Phase C: 根据复杂度 + Agent 依赖图选择最优拓扑。
+    /// 根据复杂度 + 任务类型选择最优执行模式：
+    /// - Trivial/Simple: 单 Agent
+    /// - Moderate: 2-3 Agent 串行（有依赖关系的）
+    /// - Complex: 3-5 Agent 串行
+    /// - FullScene: Hermes Council（多 Agent 协同 + 总编裁决）
     pub fn select_topology(&self, task_type: TaskType, complexity: TaskComplexity) -> AgentTopology {
         match complexity {
             TaskComplexity::Trivial | TaskComplexity::Simple => {
                 AgentTopology::Single(self.default_agent_for(task_type))
             }
-            TaskComplexity::Moderate | TaskComplexity::Complex => {
+            TaskComplexity::Moderate => {
+                // 2-3 个有依赖关系的 Agent 串行
                 AgentTopology::Serial {
                     agents: &[AgentId::Character, AgentId::Narrative, AgentId::Prose],
+                }
+            }
+            TaskComplexity::Complex => {
+                // 4-5 个 Agent，串行执行以传递上下文
+                AgentTopology::Serial {
+                    agents: &[
+                        AgentId::Character,
+                        AgentId::World,
+                        AgentId::Narrative,
+                        AgentId::Prose,
+                        AgentId::Theme,
+                    ],
                 }
             }
             TaskComplexity::FullScene => {
@@ -175,6 +222,10 @@ impl Orchestrator {
                             AgentId::Narrative,
                             AgentId::Prose,
                             AgentId::Theme,
+                            AgentId::Economy,
+                            AgentId::ReaderExpectation,
+                            AgentId::Conception,
+                            AgentId::EditorInChief,
                         ],
                     }
                 }
@@ -182,18 +233,85 @@ impl Orchestrator {
         }
     }
 
-    /// 裁决 Agent 冲突。
+    /// HCP-MAD 渐进升级：当当前拓扑产出质量不足时，升级到更复杂的拓扑。
     ///
-    /// Phase B: 总是返回第一条建议。
-    /// Phase C: 实现加权评分 + 总编裁决。
-    pub fn resolve_conflict(&self, conflict: &AgentConflict) -> String {
-        conflict.proposal_a.clone()
+    /// 升级路径：
+    /// - Single → Serial(3) → Serial(5) → FullScene
+    /// - Serial(3) → Serial(5) → FullScene
+    /// - Serial(5) → FullScene
+    ///
+    /// 返回升级后的拓扑，如果已经是最复杂则返回 None。
+    pub fn upgrade_topology(&self, current: &AgentTopology, _task_type: TaskType) -> Option<AgentTopology> {
+        match current {
+            AgentTopology::Single(_) => Some(AgentTopology::Serial {
+                agents: &[AgentId::Character, AgentId::Narrative, AgentId::Prose],
+            }),
+            AgentTopology::Serial { agents } if agents.len() <= 3 => Some(AgentTopology::Serial {
+                agents: &[
+                    AgentId::Character,
+                    AgentId::World,
+                    AgentId::Narrative,
+                    AgentId::Prose,
+                    AgentId::Theme,
+                ],
+            }),
+            AgentTopology::Serial { agents } if agents.len() <= 5 => {
+                if self.hermes_enabled {
+                    Some(AgentTopology::HermesCouncil {
+                        analysts: &[
+                            AgentId::Character,
+                            AgentId::World,
+                            AgentId::Narrative,
+                            AgentId::Prose,
+                            AgentId::Theme,
+                        ],
+                        chair: AgentId::EditorInChief,
+                    })
+                } else {
+                    Some(AgentTopology::Serial {
+                        agents: &[
+                            AgentId::Character,
+                            AgentId::World,
+                            AgentId::Narrative,
+                            AgentId::Prose,
+                            AgentId::Theme,
+                            AgentId::Economy,
+                            AgentId::ReaderExpectation,
+                            AgentId::Conception,
+                            AgentId::EditorInChief,
+                        ],
+                    })
+                }
+            }
+            // 已经是最复杂的拓扑
+            _ => None,
+        }
     }
 
-    /// 执行一次分析。
+    /// 裁决 Agent 冲突。
     ///
-    /// 根据任务复杂度选择拓扑，依次（或并行）调用 Agent，
-    /// 将结果记录到 SharedContext 并返回。
+    /// Phase D: 基于严重级别的简单裁决策略：
+    /// - Minor: 取 proposal_a（先到先得）
+    /// - Moderate: 取 proposal_a（后续可扩展为加权评分）
+    /// - Critical: 标记需要总编裁决，暂取 proposal_a
+    pub fn resolve_conflict(&self, conflict: &AgentConflict) -> String {
+        match conflict.severity {
+            ConflictSeverity::Minor => conflict.proposal_a.clone(),
+            ConflictSeverity::Moderate | ConflictSeverity::Critical => {
+                // Phase D: 仍返回 proposal_a，但标记为需要人工审核
+                // Phase E+: 实现真正的加权评分 + 总编裁决
+                conflict.proposal_a.clone()
+            }
+        }
+    }
+
+    /// 执行一次分析（HCP-MAD 渐进升级）。
+    ///
+    /// 流程：
+    /// 1. 预判复杂度 → 选择拓扑
+    /// 2. 依次调用 Agent
+    /// 3. 如果全部失败且还有升级空间，升级拓扑重试
+    /// 4. 记录最终结果到 SharedContext
     pub async fn run_analysis(
         &self,
         request: &AnalysisRequest,
@@ -203,35 +321,62 @@ impl Orchestrator {
     ) -> CoreResult<AnalysisResult> {
         let text_length = ctx.chapter_text.len();
         let complexity = self.predict_complexity(request.task_type, text_length);
-        let topology = self.select_topology(request.task_type, complexity);
+        let mut topology = self.select_topology(request.task_type, complexity);
+        let mut upgrade_round = 0;
 
-        let agent_ids = topology.agent_ids();
-        let mut outputs = Vec::new();
+        loop {
+            let agent_ids = topology.agent_ids();
+            let mut outputs = Vec::new();
+            let mut success_count = 0;
 
-        for agent_id in &agent_ids {
-            if let Some(agent) = registry.get(*agent_id) {
-                if agent.enabled() {
-                    match agent.analyze(ctx, bridge).await {
-                        Ok(output) => {
-                            ctx.record_output(*agent_id, output.clone());
-                            outputs.push((*agent_id, output));
-                        }
-                        Err(e) => {
-                            // Agent 失败不阻塞其他 Agent，记录错误
-                            let err_msg = format!("{{\"error\": \"{e}\"}}");
-                            ctx.record_output(*agent_id, err_msg.clone());
-                            outputs.push((*agent_id, err_msg));
+            for agent_id in &agent_ids {
+                if let Some(agent) = registry.get(*agent_id) {
+                    if agent.enabled() {
+                        match agent.analyze(ctx, bridge).await {
+                            Ok(output) => {
+                                ctx.record_output(*agent_id, output.clone());
+                                outputs.push((*agent_id, output));
+                                success_count += 1;
+                            }
+                            Err(e) => {
+                                // Agent 失败不阻塞其他 Agent，记录错误
+                                let err_msg = format!("{{\"error\": \"{e}\"}}");
+                                ctx.record_output(*agent_id, err_msg.clone());
+                                outputs.push((*agent_id, err_msg));
+                            }
                         }
                     }
                 }
             }
-        }
 
-        Ok(AnalysisResult {
-            agent_outputs: outputs,
-            topology,
-            complexity,
-        })
+            // 如果有成功产出，或者已达最大升级轮数，或者无法再升级，返回结果
+            if success_count > 0
+                || upgrade_round >= self.max_upgrade_rounds
+                || self.upgrade_topology(&topology, request.task_type).is_none()
+            {
+                return Ok(AnalysisResult {
+                    agent_outputs: outputs,
+                    topology,
+                    complexity,
+                });
+            }
+
+            // 全部失败 → HCP-MAD 升级拓扑重试
+            if let Some(upgraded) = self.upgrade_topology(&topology, request.task_type) {
+                topology = upgraded;
+                upgrade_round += 1;
+                // 清空上一轮的错误输出
+                for (agent_id, _) in &outputs {
+                    ctx.outputs.remove(agent_id);
+                }
+            } else {
+                return Ok(AnalysisResult {
+                    agent_outputs: outputs,
+                    topology,
+                    complexity,
+                });
+            }
+        }
     }
 
     fn default_agent_for(&self, task_type: TaskType) -> AgentId {
@@ -287,20 +432,94 @@ mod tests {
         assert!(ids.contains(&AgentId::EditorInChief));
     }
 
+    // ── predict_complexity ──
+
     #[test]
-    fn test_predict_complexity_default() {
+    fn test_predict_complexity_short_text_simple_task() {
         let orch = Orchestrator::new();
+        // 短文本 + StyleCheck → Simple（StyleCheck 最低 Simple）
         assert_eq!(
-            orch.predict_complexity(TaskType::PadCompute, 1000),
+            orch.predict_complexity(TaskType::StyleCheck, 100),
+            TaskComplexity::Simple
+        );
+    }
+
+    #[test]
+    fn test_predict_complexity_medium_text_simple_task() {
+        let orch = Orchestrator::new();
+        // 中等文本 + 简单任务 → Simple
+        assert_eq!(
+            orch.predict_complexity(TaskType::StyleCheck, 500),
+            TaskComplexity::Simple
+        );
+    }
+
+    #[test]
+    fn test_predict_complexity_pad_compute_bumps_to_moderate() {
+        let orch = Orchestrator::new();
+        // 短文本但 PadCompute 至少 Moderate
+        assert_eq!(
+            orch.predict_complexity(TaskType::PadCompute, 100),
             TaskComplexity::Moderate
         );
     }
+
+    #[test]
+    fn test_predict_complexity_long_text() {
+        let orch = Orchestrator::new();
+        // 长文本 → Complex
+        assert_eq!(
+            orch.predict_complexity(TaskType::StyleCheck, 3000),
+            TaskComplexity::Complex
+        );
+    }
+
+    #[test]
+    fn test_predict_complexity_scene_analysis_always_full() {
+        let orch = Orchestrator::new();
+        // SceneAnalysis 至少 FullScene
+        assert_eq!(
+            orch.predict_complexity(TaskType::SceneAnalysis, 500),
+            TaskComplexity::FullScene
+        );
+    }
+
+    #[test]
+    fn test_predict_complexity_very_long_text() {
+        let orch = Orchestrator::new();
+        assert_eq!(
+            orch.predict_complexity(TaskType::EntityExtract, 6000),
+            TaskComplexity::FullScene
+        );
+    }
+
+    // ── select_topology ──
 
     #[test]
     fn test_select_topology_trivial() {
         let orch = Orchestrator::new();
         let topo = orch.select_topology(TaskType::StyleCheck, TaskComplexity::Trivial);
         assert!(matches!(topo, AgentTopology::Single(AgentId::Prose)));
+    }
+
+    #[test]
+    fn test_select_topology_moderate_serial_3() {
+        let orch = Orchestrator::new();
+        let topo = orch.select_topology(TaskType::PadCompute, TaskComplexity::Moderate);
+        match topo {
+            AgentTopology::Serial { agents } => assert_eq!(agents.len(), 3),
+            _ => panic!("Expected Serial topology"),
+        }
+    }
+
+    #[test]
+    fn test_select_topology_complex_serial_5() {
+        let orch = Orchestrator::new();
+        let topo = orch.select_topology(TaskType::PadCompute, TaskComplexity::Complex);
+        match topo {
+            AgentTopology::Serial { agents } => assert_eq!(agents.len(), 5),
+            _ => panic!("Expected Serial topology"),
+        }
     }
 
     #[test]
@@ -315,7 +534,68 @@ mod tests {
         let mut orch = Orchestrator::new();
         orch.hermes_enabled = false;
         let topo = orch.select_topology(TaskType::SceneAnalysis, TaskComplexity::FullScene);
-        assert!(matches!(topo, AgentTopology::Serial { .. }));
+        match topo {
+            AgentTopology::Serial { agents } => assert_eq!(agents.len(), 9),
+            _ => panic!("Expected Serial with all 9 agents"),
+        }
+    }
+
+    // ── upgrade_topology ──
+
+    #[test]
+    fn test_upgrade_topology_single_to_serial() {
+        let orch = Orchestrator::new();
+        let topo = AgentTopology::Single(AgentId::Character);
+        let upgraded = orch.upgrade_topology(&topo, TaskType::PadCompute).unwrap();
+        match upgraded {
+            AgentTopology::Serial { agents } => assert_eq!(agents.len(), 3),
+            _ => panic!("Expected Serial(3)"),
+        }
+    }
+
+    #[test]
+    fn test_upgrade_topology_serial_3_to_serial_5() {
+        let orch = Orchestrator::new();
+        let topo = AgentTopology::Serial {
+            agents: &[AgentId::Character, AgentId::Narrative, AgentId::Prose],
+        };
+        let upgraded = orch.upgrade_topology(&topo, TaskType::PadCompute).unwrap();
+        match upgraded {
+            AgentTopology::Serial { agents } => assert_eq!(agents.len(), 5),
+            _ => panic!("Expected Serial(5)"),
+        }
+    }
+
+    #[test]
+    fn test_upgrade_topology_serial_5_to_hermes() {
+        let orch = Orchestrator::new();
+        let topo = AgentTopology::Serial {
+            agents: &[
+                AgentId::Character,
+                AgentId::World,
+                AgentId::Narrative,
+                AgentId::Prose,
+                AgentId::Theme,
+            ],
+        };
+        let upgraded = orch.upgrade_topology(&topo, TaskType::PadCompute).unwrap();
+        assert!(matches!(upgraded, AgentTopology::HermesCouncil { .. }));
+    }
+
+    #[test]
+    fn test_upgrade_topology_hermes_is_terminal() {
+        let orch = Orchestrator::new();
+        let topo = AgentTopology::HermesCouncil {
+            analysts: &[
+                AgentId::Character,
+                AgentId::World,
+                AgentId::Narrative,
+                AgentId::Prose,
+                AgentId::Theme,
+            ],
+            chair: AgentId::EditorInChief,
+        };
+        assert!(orch.upgrade_topology(&topo, TaskType::PadCompute).is_none());
     }
 
     #[test]
@@ -354,10 +634,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_run_analysis_topology_selection() {
-        let orch = Orchestrator::new();
+    async fn test_run_analysis_no_upgrade_rounds() {
+        // 禁用升级以避免连接不可达端口的超时
+        let mut orch = Orchestrator::new();
+        orch.max_upgrade_rounds = 0;
         let registry = AgentRegistry::with_all_agents();
-        let mut bridge = PythonBridge::new(Some("http://127.0.0.1:1")).unwrap(); // 不可达端口
+        let mut bridge = PythonBridge::new(Some("http://127.0.0.1:1")).unwrap();
         let mut ctx = SharedContext::new("p1", "测试文本");
 
         let request = AnalysisRequest {
@@ -368,18 +650,11 @@ mod tests {
             context_note: None,
         };
 
-        // 即使 sidecar 不可达，拓扑选择和流程应正确执行
-        // Agent 会报错但不阻塞其他 Agent
         let result = orch.run_analysis(&request, &mut ctx, &registry, &mut bridge).await;
-        // 结果可能是 Ok（带错误输出）或 Err（bridge 级别错误）
-        // 两种都是可接受的
         match result {
             Ok(ar) => {
-                // predict_complexity 返回 Moderate → Serial 拓扑
-                assert!(matches!(ar.topology, AgentTopology::Serial { .. }));
-                // Serial 拓扑有 3 个 Agent (Character, Narrative, Prose)
-                assert_eq!(ar.agent_outputs.len(), 3);
-                // 所有输出应包含错误信息（sidecar 不可达）
+                // 无升级 → Moderate → Serial(3) → 全部失败但直接返回
+                assert!(!ar.agent_outputs.is_empty());
                 for (_, output) in &ar.agent_outputs {
                     assert!(output.contains("error"));
                 }

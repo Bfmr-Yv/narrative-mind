@@ -2,6 +2,7 @@
 //!
 //! Phase B: 定义 Agent trait、AgentRegistry、SharedContext、Agent 骨架。
 //! Phase C: 填充各 Agent 的实际分析逻辑。
+//! Phase D: 扩展 build_variables，不同 Agent 传不同变量。
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -22,10 +23,14 @@ pub struct SharedContext {
     pub project_id: String,
     /// 当前章节 ID（可选）
     pub chapter_id: Option<String>,
+    /// 当前章节标题
+    pub chapter_title: Option<String>,
     /// 当前章节全文
     pub chapter_text: String,
     /// 前序 Agent 的分析产出：`AgentId → 产出文本`
     pub outputs: HashMap<AgentId, String>,
+    /// 附加元数据（世界设定、角色档案等）
+    pub metadata: HashMap<String, String>,
 }
 
 impl SharedContext {
@@ -34,14 +39,28 @@ impl SharedContext {
         Self {
             project_id: project_id.to_string(),
             chapter_id: None,
+            chapter_title: None,
             chapter_text: chapter_text.to_string(),
             outputs: HashMap::new(),
+            metadata: HashMap::new(),
         }
     }
 
     /// 设置章节 ID。
     pub fn with_chapter(mut self, chapter_id: &str) -> Self {
         self.chapter_id = Some(chapter_id.to_string());
+        self
+    }
+
+    /// 设置章节标题。
+    pub fn with_title(mut self, title: &str) -> Self {
+        self.chapter_title = Some(title.to_string());
+        self
+    }
+
+    /// 添加元数据。
+    pub fn with_metadata(mut self, key: &str, value: &str) -> Self {
+        self.metadata.insert(key.to_string(), value.to_string());
         self
     }
 
@@ -162,11 +181,27 @@ impl Default for AgentRegistry {
 }
 
 // =========================================================================
-// 9 个 Agent 骨架
+// 共享辅助函数
 // =========================================================================
 
-macro_rules! agent_stub {
-    ($name:ident, $id:expr, $display:expr, $tier:expr, $prompt_key:expr) => {
+/// 从 SharedContext 收集所有前序 Agent 输出为汇总文本。
+fn collect_prior_outputs(ctx: &SharedContext) -> String {
+    if ctx.outputs.is_empty() {
+        return "（无前序输出）".into();
+    }
+    ctx.outputs
+        .iter()
+        .map(|(id, output)| format!("[{}] {}", id.name(), output))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+// =========================================================================
+// Agent 宏（带通用 analyze 实现）
+// =========================================================================
+
+macro_rules! agent_impl {
+    ($name:ident, $id:expr, $display:expr, $tier:expr, $prompt_key:expr, |$ctx:ident| $body:expr) => {
         pub struct $name;
 
         #[async_trait]
@@ -187,10 +222,8 @@ macro_rules! agent_stub {
                 $prompt_key
             }
 
-            fn build_variables(&self, ctx: &SharedContext) -> HashMap<String, String> {
-                let mut vars = HashMap::new();
-                vars.insert("chapter_text".into(), ctx.chapter_text.clone());
-                vars
+            fn build_variables(&self, $ctx: &SharedContext) -> HashMap<String, String> {
+                $body
             }
 
             async fn analyze(&self, ctx: &SharedContext, bridge: &mut PythonBridge) -> CoreResult<String> {
@@ -208,15 +241,98 @@ macro_rules! agent_stub {
     };
 }
 
-agent_stub!(CharacterAgent, AgentId::Character, "角色 Agent", ModelTier::Pro, "pad_compute");
-agent_stub!(WorldAgent, AgentId::World, "世界 Agent", ModelTier::Flash, "rule_check");
-agent_stub!(NarrativeAgent, AgentId::Narrative, "叙事 Agent", ModelTier::Pro, "foreshadow_detect");
-agent_stub!(ProseAgent, AgentId::Prose, "文辞 Agent", ModelTier::Flash, "style_check");
-agent_stub!(ThemeAgent, AgentId::Theme, "主题 Agent", ModelTier::Pro, "theme_extract");
-agent_stub!(EconomyAgent, AgentId::Economy, "经济 Agent", ModelTier::Flash, "economy_check");
-agent_stub!(ReaderExpectationAgent, AgentId::ReaderExpectation, "预期 Agent", ModelTier::Flash, "expectation_analyze");
-agent_stub!(ConceptionAgent, AgentId::Conception, "构思 Agent", ModelTier::Flash, "imagery_detect");
-agent_stub!(EditorInChiefAgent, AgentId::EditorInChief, "总编 Agent", ModelTier::Pro, "scene_analysis");
+// ── CharacterAgent: PAD 情感计算 + 角色分析 ──
+agent_impl!(CharacterAgent, AgentId::Character, "角色 Agent", ModelTier::Pro, "pad_compute", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(ref title) = ctx.chapter_title {
+        vars.insert("chapter_title".into(), title.clone());
+    }
+    if let Some(profiles) = ctx.metadata.get("character_profiles") {
+        vars.insert("character_profiles".into(), profiles.clone());
+    }
+    vars
+});
+
+// ── WorldAgent: 世界规则 + 空间检查 ──
+agent_impl!(WorldAgent, AgentId::World, "世界 Agent", ModelTier::Flash, "rule_check", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(rules) = ctx.metadata.get("world_rules") {
+        vars.insert("world_rules".into(), rules.clone());
+    }
+    vars
+});
+
+// ── NarrativeAgent: 叙事分析 + 伏笔检测 ──
+agent_impl!(NarrativeAgent, AgentId::Narrative, "叙事 Agent", ModelTier::Pro, "foreshadow_detect", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(outline) = ctx.metadata.get("plot_outline") {
+        vars.insert("plot_outline".into(), outline.clone());
+    }
+    if let Some(char_output) = ctx.get_output(AgentId::Character) {
+        vars.insert("character_analysis".into(), char_output.to_string());
+    }
+    vars
+});
+
+// ── ProseAgent: 文体检查 + 寄存器检查 ──
+agent_impl!(ProseAgent, AgentId::Prose, "文辞 Agent", ModelTier::Flash, "style_check", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(guide) = ctx.metadata.get("style_guide") {
+        vars.insert("style_guide".into(), guide.clone());
+    }
+    vars
+});
+
+// ── ThemeAgent: 主题提取 ──
+agent_impl!(ThemeAgent, AgentId::Theme, "主题 Agent", ModelTier::Pro, "theme_extract", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(keywords) = ctx.metadata.get("theme_keywords") {
+        vars.insert("theme_keywords".into(), keywords.clone());
+    }
+    vars
+});
+
+// ── EconomyAgent: 经济性检查 ──
+agent_impl!(EconomyAgent, AgentId::Economy, "经济 Agent", ModelTier::Flash, "economy_check", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    vars.insert("word_count".into(), ctx.chapter_text.len().to_string());
+    vars
+});
+
+// ── ReaderExpectationAgent: 读者预期分析 ──
+agent_impl!(ReaderExpectationAgent, AgentId::ReaderExpectation, "预期 Agent", ModelTier::Flash, "expectation_analyze", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(genre) = ctx.metadata.get("genre") {
+        vars.insert("genre".into(), genre.clone());
+    }
+    vars
+});
+
+// ── ConceptionAgent: 意象检测 ──
+agent_impl!(ConceptionAgent, AgentId::Conception, "构思 Agent", ModelTier::Flash, "imagery_detect", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(keywords) = ctx.metadata.get("imagery_keywords") {
+        vars.insert("imagery_keywords".into(), keywords.clone());
+    }
+    vars
+});
+
+// ── EditorInChiefAgent: 总编 — 汇总所有前序输出 ──
+agent_impl!(EditorInChiefAgent, AgentId::EditorInChief, "总编 Agent", ModelTier::Pro, "scene_analysis", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    let prior = collect_prior_outputs(ctx);
+    vars.insert("agent_outputs".into(), prior);
+    vars
+});
 
 // =========================================================================
 // Tests
@@ -234,13 +350,30 @@ mod tests {
         assert_eq!(ctx.project_id, "p1");
         assert_eq!(ctx.chapter_text, "hello world");
         assert!(ctx.chapter_id.is_none());
+        assert!(ctx.chapter_title.is_none());
         assert!(ctx.outputs.is_empty());
+        assert!(ctx.metadata.is_empty());
     }
 
     #[test]
     fn test_shared_context_with_chapter() {
         let ctx = SharedContext::new("p1", "text").with_chapter("ch1");
         assert_eq!(ctx.chapter_id.unwrap(), "ch1");
+    }
+
+    #[test]
+    fn test_shared_context_with_title() {
+        let ctx = SharedContext::new("p1", "text").with_title("第一章");
+        assert_eq!(ctx.chapter_title.unwrap(), "第一章");
+    }
+
+    #[test]
+    fn test_shared_context_with_metadata() {
+        let ctx = SharedContext::new("p1", "text")
+            .with_metadata("genre", "武侠")
+            .with_metadata("style_guide", "简洁有力");
+        assert_eq!(ctx.metadata.get("genre").unwrap(), "武侠");
+        assert_eq!(ctx.metadata.get("style_guide").unwrap(), "简洁有力");
     }
 
     #[test]
@@ -299,6 +432,44 @@ mod tests {
         let ctx = SharedContext::new("p1", "测试文本内容");
         let vars = CharacterAgent.build_variables(&ctx);
         assert_eq!(vars.get("chapter_text").unwrap(), "测试文本内容");
+        // CharacterAgent 不传 chapter_title（未设置）
+        assert!(!vars.contains_key("chapter_title"));
+    }
+
+    #[test]
+    fn test_agent_build_variables_with_metadata() {
+        let ctx = SharedContext::new("p1", "测试文本")
+            .with_title("第一章")
+            .with_metadata("character_profiles", "贾宝玉: 17岁");
+        let vars = CharacterAgent.build_variables(&ctx);
+        assert_eq!(vars.get("chapter_title").unwrap(), "第一章");
+        assert_eq!(vars.get("character_profiles").unwrap(), "贾宝玉: 17岁");
+    }
+
+    #[test]
+    fn test_editor_in_chief_receives_prior_outputs() {
+        let mut ctx = SharedContext::new("p1", "测试文本");
+        ctx.record_output(AgentId::Character, r#"{"pleasure": 0.8}"#.into());
+        ctx.record_output(AgentId::World, r#"{"valid": true}"#.into());
+        let vars = EditorInChiefAgent.build_variables(&ctx);
+        let prior = vars.get("agent_outputs").unwrap();
+        assert!(prior.contains("角色 Agent"));
+        assert!(prior.contains("世界 Agent"));
+    }
+
+    #[test]
+    fn test_economy_agent_includes_word_count() {
+        let ctx = SharedContext::new("p1", "测试文本");
+        let vars = EconomyAgent.build_variables(&ctx);
+        assert!(vars.contains_key("word_count"));
+    }
+
+    #[test]
+    fn test_narrative_agent_receives_character_output() {
+        let mut ctx = SharedContext::new("p1", "测试文本");
+        ctx.record_output(AgentId::Character, r#"{"pleasure": 0.8}"#.into());
+        let vars = NarrativeAgent.build_variables(&ctx);
+        assert!(vars.contains_key("character_analysis"));
     }
 
     #[test]
