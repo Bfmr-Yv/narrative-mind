@@ -120,6 +120,7 @@ pub enum Severity {
 // =========================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TaskType {
     // Phase 1
     PadCompute,

@@ -232,9 +232,9 @@ impl ProjectManager {
         Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
     }
 
-    /// 简单字数统计：按空白字符分割。
+    /// 字数统计：中文按字符数，非中文按空格分词。
     fn count_words(text: &str) -> u32 {
-        text.split_whitespace().count() as u32
+        text.chars().filter(|c| !c.is_whitespace()).count() as u32
     }
 }
 
@@ -314,7 +314,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(ch.title, "Chapter 1");
-        assert_eq!(ch.word_count, 7); // "It was a dark and stormy night."
+        assert_eq!(ch.word_count, 25); // "It was a dark and stormy night." (25 non-whitespace chars)
         assert_eq!(ch.sort_order, 0); // first chapter
         assert_eq!(ch.project_id, project.id);
     }
@@ -351,14 +351,14 @@ mod tests {
         let pm = setup();
         let project = pm.create_project("Novel").unwrap();
         let mut ch = pm.create_chapter(&project.id, "Ch1", "two words").unwrap();
-        assert_eq!(ch.word_count, 2);
+        assert_eq!(ch.word_count, 8); // "two words" = 8 non-whitespace chars
 
         // 修改文本，word_count 应重新计算
         ch.text = "now five words here".into();
         pm.update_chapter(&ch).unwrap();
 
         let updated = pm.get_chapter(&ch.id).unwrap().unwrap();
-        assert_eq!(updated.word_count, 4); // "now five words here"
+        assert_eq!(updated.word_count, 16); // "now five words here" = 16 non-whitespace chars
         // updated_at 应被刷新（至少不为空）
         assert!(!updated.updated_at.is_empty());
     }
@@ -384,7 +384,7 @@ mod tests {
         pm.recalc_project_stats(&project.id).unwrap();
         let updated = pm.get_project(&project.id).unwrap().unwrap();
         assert_eq!(updated.chapter_count, 2);
-        assert_eq!(updated.total_words, 5);
+        assert_eq!(updated.total_words, 19); // "one two three"(11) + "four five"(8)
     }
 
     #[test]

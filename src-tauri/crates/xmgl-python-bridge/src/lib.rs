@@ -427,7 +427,7 @@ mod tests {
 
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["request_id"], "r1");
-        assert_eq!(json["task_type"], "PadCompute");
+        assert_eq!(json["task_type"], "pad_compute");
         assert!(json.get("temperature_override").is_some());
         assert!(json.get("max_tokens_override").is_none());
     }
