@@ -6,6 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { ProjectMeta } from "../types";
+export type { ProjectMeta };
 
 /** 列出所有项目（按更新时间降序）。 */
 export async function listProjects(): Promise<ProjectMeta[]> {

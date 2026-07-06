@@ -139,3 +139,59 @@ export interface AgentFinding {
   suggestion: string | null;
   timestamp: string;
 }
+
+// =========================================================================
+// Phase E: Agent 标注 & 前端 UI 类型
+// =========================================================================
+
+/** Agent 分析标注 */
+export interface AgentAnnotation {
+  /** 标注 ID */
+  id: string;
+  /** Agent ID */
+  agent_id: string;
+  /** Agent 中文名 */
+  agent_name: string;
+  /** 标注消息 */
+  message: string;
+  /** 严重级别 */
+  severity: "info" | "warn" | "critical";
+  /** 文本位置 */
+  location?: {
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+  };
+  /** 修改建议（可选） */
+  suggestion?: string;
+}
+
+/** Agent 分析进度 */
+export interface AgentProgressEvent {
+  agent_id: string;
+  agent_name: string;
+  stage: string;
+  progress_pct: number;
+}
+
+/** 分析完成事件（与 Rust analysis:complete payload 对齐） */
+export interface AnalysisCompleteEvent {
+  request_id: string;
+  total_cost: number;
+  total_latency: number;
+  agent_count: number;
+  findings_count: number;
+}
+
+/** Agent 运行状态 */
+export type AgentStatus = "idle" | "running" | "done" | "error";
+
+/** 单个 Agent 的运行状态 */
+export interface AgentState {
+  agent_id: string;
+  agent_name: string;
+  status: AgentStatus;
+  progress: number;
+  error?: string;
+}

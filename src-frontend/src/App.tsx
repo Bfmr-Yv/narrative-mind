@@ -7,8 +7,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { Editor, StatusBar, AnalysisPanel } from "./components";
 import { listProjects, listChapters, onAgentProgress, onAnalysisComplete } from "./api";
-import type { ProjectMeta, ChapterData } from "./api";
-import type { AgentState, AgentAnnotation, AnalysisCompleteEvent } from "./types";
+import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
+import type { AgentState, AgentAnnotation } from "./types";
 import type { AnalysisOutput } from "./api";
 import "./App.css";
 
@@ -63,7 +63,7 @@ function App() {
       });
     });
 
-    const unlisten2 = onAnalysisComplete((evt: AnalysisCompleteEvent) => {
+    const unlisten2 = onAnalysisComplete((evt: AnalysisComplete) => {
       // 标记所有 Agent 为完成
       setAgentStates((prev) =>
         prev.map((a) => (a.status === "running" ? { ...a, status: "done", progress: 100 } : a))

@@ -6,6 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { ChapterData } from "../types";
+export type { ChapterData };
 
 /** 列出项目下所有章节（按 sort_order 升序）。 */
 export async function listChapters(projectId: string): Promise<ChapterData[]> {

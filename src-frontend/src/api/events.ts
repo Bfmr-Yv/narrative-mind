@@ -24,6 +24,7 @@ export interface ProposalReady {
 }
 
 export interface AnalysisComplete {
+  request_id: string;
   total_cost: number;
   total_latency: number;
   agent_count: number;

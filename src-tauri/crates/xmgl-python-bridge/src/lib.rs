@@ -408,6 +408,7 @@ mod tests {
             request_id: "r1".into(),
             task_type: TaskType::PadCompute,
             system_prompt_key: "pad_v1".into(),
+            system_prompt: String::new(),
             user_message: "分析情感".into(),
             response_format: "json".into(),
             temperature_override: Some(0.7),
