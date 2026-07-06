@@ -471,7 +471,7 @@ impl Orchestrator {
         request: &AnalysisRequest,
         ctx: &mut SharedContext,
         registry: &AgentRegistry,
-        bridge: &mut PythonBridge,
+        bridge: &PythonBridge,
         observer: Option<&dyn AnalysisObserver>,
     ) -> CoreResult<AnalysisResult> {
         let text_length = ctx.chapter_text.len();
@@ -843,7 +843,7 @@ mod tests {
         let mut orch = Orchestrator::new();
         orch.max_upgrade_rounds = 0;
         let registry = AgentRegistry::with_all_agents();
-        let mut bridge = PythonBridge::new(Some("http://127.0.0.1:1")).unwrap();
+        let bridge = PythonBridge::new(Some("http://127.0.0.1:1")).unwrap();
         let mut ctx = SharedContext::new("p1", "测试文本");
 
         let request = AnalysisRequest {
@@ -854,7 +854,7 @@ mod tests {
             context_note: None,
         };
 
-        let result = orch.run_analysis(&request, &mut ctx, &registry, &mut bridge, None).await;
+        let result = orch.run_analysis(&request, &mut ctx, &registry, &bridge, None).await;
         match result {
             Ok(ar) => {
                 // 无升级 → Moderate → Serial(3) → 全部失败但直接返回

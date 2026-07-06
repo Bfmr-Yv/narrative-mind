@@ -7,7 +7,6 @@
 pub mod commands;
 
 use tauri::Emitter;
-use tokio::sync::Mutex;
 use xmgl_agent::AgentRegistry;
 use xmgl_orchestrator::{AnalysisObserver, Orchestrator};
 use xmgl_project::ProjectManager;
@@ -26,7 +25,7 @@ use xmgl_python_bridge::PythonBridge;
 /// ProjectManager 本身是 Sync + Clone（仅存 db_path），无需锁。
 pub struct AppState {
     pub project_manager: ProjectManager,
-    pub python_bridge: Mutex<PythonBridge>,
+    pub python_bridge: PythonBridge,
     pub agent_registry: AgentRegistry,
     pub orchestrator: Orchestrator,
 }
@@ -42,7 +41,7 @@ impl AppState {
 
         Ok(Self {
             project_manager,
-            python_bridge: Mutex::new(python_bridge),
+            python_bridge,
             agent_registry: AgentRegistry::with_all_agents(),
             orchestrator: Orchestrator::new(),
         })
@@ -209,9 +208,7 @@ mod tests {
         let db_path = format!("test_tauri2_{}.db", uuid::Uuid::new_v4());
         let state =
             AppState::new(&db_path, Some("http://127.0.0.1:9091")).expect("create AppState");
-        let bridge = state.python_bridge.blocking_lock();
-        assert_eq!(bridge.consecutive_failures(), 0);
-        drop(bridge);
+        assert_eq!(state.python_bridge.consecutive_failures(), 0);
         let _ = std::fs::remove_file(&db_path);
     }
 

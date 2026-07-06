@@ -5,6 +5,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 use xmgl_core::{CoreError, CoreResult, TaskType};
 
@@ -116,8 +117,24 @@ pub struct PythonBridge {
     base_url: String,
     client: Client,
     health_check_interval: Duration,
-    restart_on_failure: bool,
-    consecutive_failures: u32,
+    restart_on_failure: AtomicBool,
+    consecutive_failures: AtomicU32,
+}
+
+impl Clone for PythonBridge {
+    fn clone(&self) -> Self {
+        Self {
+            base_url: self.base_url.clone(),
+            client: self.client.clone(),
+            health_check_interval: self.health_check_interval,
+            restart_on_failure: AtomicBool::new(
+                self.restart_on_failure.load(Ordering::Relaxed),
+            ),
+            consecutive_failures: AtomicU32::new(
+                self.consecutive_failures.load(Ordering::Relaxed),
+            ),
+        }
+    }
 }
 
 impl PythonBridge {
@@ -134,36 +151,31 @@ impl PythonBridge {
             base_url: base_url.unwrap_or(DEFAULT_BASE_URL).trim_end_matches('/').to_string(),
             client,
             health_check_interval: Duration::from_secs(DEFAULT_HEALTH_CHECK_INTERVAL_SECS),
-            restart_on_failure: false,
-            consecutive_failures: 0,
+            restart_on_failure: AtomicBool::new(false),
+            consecutive_failures: AtomicU32::new(0),
         })
     }
 
     /// 设置是否在连续失败后尝试重启 sidecar（Phase D 实现实际重启逻辑）。
-    pub fn set_restart_on_failure(&mut self, enabled: bool) {
-        self.restart_on_failure = enabled;
-    }
-
-    /// 设置 health check 间隔。
-    pub fn set_health_check_interval(&mut self, secs: u64) {
-        self.health_check_interval = Duration::from_secs(secs);
+    pub fn set_restart_on_failure(&self, enabled: bool) {
+        self.restart_on_failure.store(enabled, Ordering::Relaxed);
     }
 
     /// 获取连续失败计数。
     pub fn consecutive_failures(&self) -> u32 {
-        self.consecutive_failures
+        self.consecutive_failures.load(Ordering::Relaxed)
     }
 
     /// 健康检查。
     ///
     /// 返回 `(ok, llm_available, model)`。
-    pub async fn health_check(&mut self) -> CoreResult<(bool, bool, String)> {
+    pub async fn health_check(&self) -> CoreResult<(bool, bool, String)> {
         let url = format!("{}/v1/llm/health", self.base_url);
 
         match self.client.get(&url).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    self.consecutive_failures = 0;
+                    self.consecutive_failures.store(0, Ordering::Relaxed);
                     if let Ok(body) = resp.json::<HealthStatus>().await {
                         let ok = body.status == "ok";
                         let llm_available = body.llm_available;
@@ -187,7 +199,7 @@ impl PythonBridge {
     /// 单次 LLM 调用。
     ///
     /// 含自动重试（3 次，指数退避 1s → 2s → 4s）。
-    pub async fn call_llm(&mut self, req: &LLMCallRequest) -> CoreResult<LLMCallResponse> {
+    pub async fn call_llm(&self, req: &LLMCallRequest) -> CoreResult<LLMCallResponse> {
         let url = format!("{}/v1/llm/call", self.base_url);
         let body = serde_json::to_value(req)
             .map_err(|e| CoreError::Internal(format!("serialize LLMCallRequest: {e}")))?;
@@ -206,7 +218,7 @@ impl PythonBridge {
     /// - `parallel`: `true` 时 Python 端并发执行
     /// - `max_concurrency`: 最大并发数
     pub async fn call_llm_batch(
-        &mut self,
+        &self,
         requests: &[LLMCallRequest],
         parallel: bool,
         max_concurrency: u32,
@@ -231,7 +243,7 @@ impl PythonBridge {
     ///
     /// `variables` 为模板变量键值对。
     pub async fn render_prompt(
-        &mut self,
+        &self,
         prompt_key: &str,
         variables: &HashMap<String, String>,
     ) -> CoreResult<RenderedPrompt> {
@@ -256,7 +268,7 @@ impl PythonBridge {
     /// `variables` 为模板变量。
     /// `task_type` 为任务类型（用于 tier 判断和成本记录）。
     pub async fn call_agent(
-        &mut self,
+        &self,
         prompt_key: &str,
         variables: &HashMap<String, String>,
         task_type: &str,
@@ -285,7 +297,7 @@ impl PythonBridge {
     ///
     /// `top_k` 控制返回的最大切片数。
     pub async fn search_corpus(
-        &mut self,
+        &self,
         query: &str,
         top_k: u32,
     ) -> CoreResult<Vec<CorpusSlice>> {
@@ -313,7 +325,7 @@ impl PythonBridge {
 
     /// POST 请求 + 自动重试（指数退避）。
     async fn post_with_retry(
-        &mut self,
+        &self,
         url: &str,
         body: &serde_json::Value,
     ) -> CoreResult<serde_json::Value> {
@@ -323,7 +335,7 @@ impl PythonBridge {
             match self.client.post(url).json(body).send().await {
                 Ok(resp) => {
                     if resp.status().is_success() {
-                        self.consecutive_failures = 0;
+                        self.consecutive_failures.store(0, Ordering::Relaxed);
                         return resp.json::<serde_json::Value>().await.map_err(|e| {
                             CoreError::Internal(format!("parse JSON response: {e}"))
                         });
@@ -352,13 +364,14 @@ impl PythonBridge {
         Err(last_err.unwrap_or_else(|| CoreError::Internal("max retries exceeded".into())))
     }
 
-    fn record_failure(&mut self) {
-        self.consecutive_failures += 1;
+    fn record_failure(&self) {
+        self.consecutive_failures.fetch_add(1, Ordering::Relaxed);
     }
 
     /// 检查是否已达到连续失败阈值，应由上层决定是否重启 sidecar。
     pub fn should_restart(&self) -> bool {
-        self.restart_on_failure && self.consecutive_failures >= CONSECUTIVE_FAILURE_LIMIT
+        self.restart_on_failure.load(Ordering::Relaxed)
+            && self.consecutive_failures.load(Ordering::Relaxed) >= CONSECUTIVE_FAILURE_LIMIT
     }
 }
 
@@ -396,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_set_restart_on_failure() {
-        let mut bridge = PythonBridge::new(None).unwrap();
+        let bridge = PythonBridge::new(None).unwrap();
         bridge.set_restart_on_failure(true);
         // 即便启用，失败计数仍为 0 时不应重启
         assert!(!bridge.should_restart());

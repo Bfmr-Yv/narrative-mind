@@ -100,7 +100,7 @@ pub trait Agent: Send + Sync {
     /// `task_type` 动态选择 prompt key。
     /// 返回分析结果文本和可选的 LLM 用量统计。
     async fn analyze(
-        &self, ctx: &SharedContext, bridge: &mut PythonBridge, task_type: TaskType,
+        &self, ctx: &SharedContext, bridge: &PythonBridge, task_type: TaskType,
     ) -> CoreResult<(String, Option<LLMUsage>)>;
 
     /// Agent 使用的 prompt key（对应 Python 注册表）。
@@ -232,7 +232,7 @@ macro_rules! agent_impl {
             async fn analyze(
                 &self,
                 ctx: &SharedContext,
-                bridge: &mut PythonBridge,
+                bridge: &PythonBridge,
                 task_type: TaskType,
             ) -> CoreResult<(String, Option<LLMUsage>)> {
                 let vars = self.build_variables(ctx);

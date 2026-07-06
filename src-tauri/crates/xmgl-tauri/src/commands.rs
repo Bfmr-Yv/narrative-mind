@@ -81,8 +81,7 @@ pub fn delete_chapter(state: State<'_, AppState>, id: String) -> Result<(), Stri
 
 #[tauri::command]
 pub async fn health_check(state: State<'_, AppState>) -> Result<(bool, bool, String), String> {
-    let mut bridge = state.python_bridge.lock().await;
-    bridge.health_check().await.map_err(|e| e.to_string())
+    state.python_bridge.health_check().await.map_err(|e| e.to_string())
 }
 
 // ── 分析 ──
@@ -152,19 +151,17 @@ pub async fn run_analysis(
 
     // 6. 执行分析（记录 wall-clock 耗时，含编排开销）
     let start = std::time::Instant::now();
-    let mut bridge = state.python_bridge.lock().await;
     let result = state
         .orchestrator
         .run_analysis(
             &request,
             &mut ctx,
             &state.agent_registry,
-            &mut bridge,
+            &state.python_bridge,
             Some(&observer),
         )
         .await
         .map_err(|e| e.to_string())?;
-    drop(bridge); // 释放锁
     let wall_clock_ms = start.elapsed().as_millis() as u64;
 
     // 7. 写成本日志
