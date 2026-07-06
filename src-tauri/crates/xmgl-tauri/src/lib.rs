@@ -8,6 +8,7 @@ pub mod commands;
 
 use tauri::Emitter;
 use xmgl_agent::AgentRegistry;
+use xmgl_core::TextRange;
 use xmgl_orchestrator::{AnalysisObserver, Orchestrator};
 use xmgl_project::ProjectManager;
 use xmgl_python_bridge::PythonBridge;
@@ -129,6 +130,31 @@ impl AnalysisObserver for TauriAnalysisObserver {
                 "progress_pct": progress_pct,
             }),
         );
+    }
+
+    fn on_proposal_ready(
+        &self,
+        proposal_id: &str,
+        agent_id: &str,
+        title: &str,
+        severity: &str,
+        location: Option<TextRange>,
+        suggestion: &str,
+    ) {
+        let payload = serde_json::json!({
+            "proposal_id": proposal_id,
+            "agent_id": agent_id,
+            "title": title,
+            "severity": severity,
+            "suggestion": suggestion,
+            "location": location.map(|loc| serde_json::json!({
+                "start_line": loc.start_line,
+                "start_column": loc.start_column,
+                "end_line": loc.end_line,
+                "end_column": loc.end_column,
+            })),
+        });
+        let _ = self.app_handle.emit(events::PROPOSAL_READY, payload);
     }
 
     fn on_analysis_complete(

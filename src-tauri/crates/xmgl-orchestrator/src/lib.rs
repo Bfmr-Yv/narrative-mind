@@ -115,6 +115,16 @@ pub enum ConflictSeverity {
 pub trait AnalysisObserver: Send + Sync {
     fn on_agent_start(&self, agent_id: &str, agent_name: &str, progress_pct: f64);
     fn on_agent_done(&self, agent_id: &str, agent_name: &str, progress_pct: f64);
+    /// 一条修改建议就绪 → 前端渲染黄点。
+    fn on_proposal_ready(
+        &self,
+        proposal_id: &str,
+        agent_id: &str,
+        title: &str,
+        severity: &str,
+        location: Option<TextRange>,
+        suggestion: &str,
+    );
     fn on_analysis_complete(
         &self,
         request_id: &str,
@@ -236,9 +246,11 @@ pub fn detect_conflicts(findings: &[AgentFinding]) -> Vec<AgentFinding> {
                 (Some(la), Some(lb)) => (la, lb),
                 _ => continue,
             };
-            // 位置匹配（相同行范围内）
+            // 位置匹配（四元组精确匹配，避免同行误判）
             if loc_a.start_line != loc_b.start_line
+                || loc_a.start_column != loc_b.start_column
                 || loc_a.end_line != loc_b.end_line
+                || loc_a.end_column != loc_b.end_column
             {
                 continue;
             }
@@ -354,11 +366,25 @@ async fn run_parallel(
     registry: &AgentRegistry,
     bridge: &PythonBridge,
     task_type: TaskType,
-    _observer: Option<&dyn AnalysisObserver>,
+    observer: Option<&dyn AnalysisObserver>,
 ) -> (Vec<(AgentId, String)>, Vec<(AgentId, LLMUsage)>, u32) {
+    let total = agent_ids.len() as f64;
     let mut handles = Vec::new();
 
-    for &agent_id in agent_ids {
+    // Emit batch_start for each agent before spawning
+    if let Some(obs) = observer {
+        for (idx, agent_id) in agent_ids.iter().enumerate() {
+            if let Some(agent) = registry.get(*agent_id) {
+                obs.on_agent_start(
+                    &format!("{:?}", agent_id),
+                    agent.name(),
+                    (idx as f64 / total) * 100.0,
+                );
+            }
+        }
+    }
+
+    for (idx, &agent_id) in agent_ids.iter().enumerate() {
         if let Some(agent) = registry.get(agent_id) {
             if !agent.enabled() {
                 continue;
@@ -366,10 +392,11 @@ async fn run_parallel(
             let agent = Arc::clone(&agent);
             let bridge = bridge.clone();
             let ctx = ctx.clone();
+            let done_pct = ((idx + 1) as f64 / total) * 100.0;
 
             handles.push(tokio::spawn(async move {
                 let result = agent.analyze(&ctx, &bridge, task_type).await;
-                (agent_id, agent.name().to_string(), result)
+                (agent_id, agent.name().to_string(), done_pct, result)
             }));
         }
     }
@@ -380,11 +407,14 @@ async fn run_parallel(
 
     for handle in handles {
         match handle.await {
-            Ok((agent_id, _name, Ok((output, usage_opt)))) => {
+            Ok((agent_id, name, done_pct, Ok((output, usage_opt)))) => {
                 outputs.push((agent_id, output));
                 success_count += 1;
                 if let Some(usage) = usage_opt {
                     usages.push((agent_id, usage));
+                }
+                if let Some(obs) = observer {
+                    obs.on_agent_done(&format!("{:?}", agent_id), &name, done_pct);
                 }
             }
             _ => {
@@ -607,20 +637,45 @@ impl Orchestrator {
         }
     }
 
-    /// 裁决 Agent 冲突。
+    /// 裁决 Agent 冲突 — Phase H 加权评分。
     ///
-    /// Phase D: 基于严重级别的简单裁决策略：
-    /// - Minor: 取 proposal_a（先到先得）
-    /// - Moderate: 取 proposal_a（后续可扩展为加权评分）
-    /// - Critical: 标记需要总编裁决，暂取 proposal_a
+    /// 评分维度（三维加权）：
+    /// 1. Agent 模型级别: Pro=3, Flash=1
+    /// 2. 冲突级别: Critical=3, Moderate=2, Minor=1
+    /// 3. 建议质量: 建议长度 / 50（归一化，上限 5）
+    ///
+    /// 总分 = tier_score * 0.4 + severity_score * 0.4 + quality_score * 0.2
+    /// 对 proposal_a 和 proposal_b 分别评分，取高分者。
     pub fn resolve_conflict(&self, conflict: &AgentConflict) -> String {
-        match conflict.severity {
-            ConflictSeverity::Minor => conflict.proposal_a.clone(),
-            ConflictSeverity::Moderate | ConflictSeverity::Critical => {
-                // Phase D: 仍返回 proposal_a，但标记为需要人工审核
-                // Phase E+: 实现真正的加权评分 + 总编裁决
-                conflict.proposal_a.clone()
-            }
+        // 获取 Agent 的 tier 分数（取冲突双方中较高者）
+        let tier_score = conflict
+            .agents
+            .iter()
+            .map(|id| match id {
+                AgentId::Character | AgentId::Narrative | AgentId::Theme | AgentId::EditorInChief => 3,
+                _ => 1,
+            })
+            .max()
+            .unwrap_or(1) as f64;
+
+        let severity_score = match conflict.severity {
+            ConflictSeverity::Critical => 3.0,
+            ConflictSeverity::Moderate => 2.0,
+            ConflictSeverity::Minor => 1.0,
+        };
+
+        let score = |proposal: &str| -> f64 {
+            let quality = (proposal.len() as f64 / 50.0).min(5.0);
+            tier_score * 0.4 + severity_score * 0.4 + quality * 0.2
+        };
+
+        let score_a = score(&conflict.proposal_a);
+        let score_b = score(&conflict.proposal_b);
+
+        if score_a >= score_b {
+            conflict.proposal_a.clone()
+        } else {
+            conflict.proposal_b.clone()
         }
     }
 
@@ -700,6 +755,19 @@ impl Orchestrator {
                         agent_ids.len() as u32,
                         findings.len() as u32,
                     );
+                    // 为每个有建议的 finding 发射 proposal:ready
+                    for f in &findings {
+                        if let Some(ref suggestion) = f.suggestion {
+                            obs.on_proposal_ready(
+                                &format!("{}-{}", request.request_id, f.title),
+                                &f.agent_id,
+                                &f.title,
+                                &format!("{:?}", f.severity),
+                                f.location,
+                                suggestion,
+                            );
+                        }
+                    }
                 }
 
                 return Ok(AnalysisResult {
