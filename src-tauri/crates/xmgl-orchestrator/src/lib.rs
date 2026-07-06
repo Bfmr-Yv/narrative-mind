@@ -82,8 +82,10 @@ pub enum AnalysisTrigger {
 /// Agent 间的意见冲突。
 #[derive(Debug, Clone)]
 pub struct AgentConflict {
-    /// 冲突涉及的 Agent
-    pub agents: Vec<AgentId>,
+    /// 冲突方 A
+    pub agent_a: AgentId,
+    /// 冲突方 B
+    pub agent_b: AgentId,
     /// 冲突描述
     pub description: String,
     /// Agent A 的建议
@@ -232,9 +234,29 @@ fn parse_findings(
     findings
 }
 
+/// 判断两个文本范围是否重叠。
+///
+/// 重叠检测比精确匹配更保守——两个 Agent 指向同一段文本的不同范围
+/// 通常意味着对同一问题的不同判断，应标记为冲突。
+fn ranges_overlap(a: TextRange, b: TextRange) -> bool {
+    // 行范围不重叠
+    if a.end_line < b.start_line || b.end_line < a.start_line {
+        return false;
+    }
+    // 同行但列范围不重叠
+    if a.start_line == a.end_line
+        && b.start_line == b.end_line
+        && a.start_line == b.start_line
+        && (a.end_column < b.start_column || b.end_column < a.start_column)
+    {
+        return false;
+    }
+    true
+}
+
 /// 检测 Hermes Council 中各 Agent 之间的冲突。
 ///
-/// 如果两个不同 agent 指向相同文本位置（location）但给出不同 severity
+/// 如果两个不同 agent 指向重叠的文本位置但给出不同 severity
 /// 或矛盾建议，生成额外的 `AgentFinding` 标记冲突。
 pub fn detect_conflicts(findings: &[AgentFinding]) -> Vec<AgentFinding> {
     let mut conflicts = Vec::new();
@@ -246,12 +268,8 @@ pub fn detect_conflicts(findings: &[AgentFinding]) -> Vec<AgentFinding> {
                 (Some(la), Some(lb)) => (la, lb),
                 _ => continue,
             };
-            // 位置匹配（四元组精确匹配，避免同行误判）
-            if loc_a.start_line != loc_b.start_line
-                || loc_a.start_column != loc_b.start_column
-                || loc_a.end_line != loc_b.end_line
-                || loc_a.end_column != loc_b.end_column
-            {
+            // 范围重叠检测（保守精确匹配会漏掉真正的冲突）
+            if !ranges_overlap(loc_a, loc_b) {
                 continue;
             }
             // 同一 agent 不跟自己冲突
@@ -417,8 +435,13 @@ async fn run_parallel(
                     obs.on_agent_done(&format!("{:?}", agent_id), &name, done_pct);
                 }
             }
-            _ => {
-                // Task panicked or agent errored — skip
+            Ok((agent_id, _, _, Err(e))) => {
+                // Agent errored — record error output so it's visible in findings
+                let err_msg = format!("{{\"error\": \"{e}\"}}");
+                outputs.push((agent_id, err_msg));
+            }
+            Err(_) => {
+                // Task panicked (JoinError) — unrecoverable, skip
             }
         }
     }
@@ -640,37 +663,36 @@ impl Orchestrator {
     /// 裁决 Agent 冲突 — Phase H 加权评分。
     ///
     /// 评分维度（三维加权）：
-    /// 1. Agent 模型级别: Pro=3, Flash=1
+    /// 1. Agent 模型级别: Pro=3, Flash=1（各自 agent 独立评分）
     /// 2. 冲突级别: Critical=3, Moderate=2, Minor=1
     /// 3. 建议质量: 建议长度 / 50（归一化，上限 5）
     ///
-    /// 总分 = tier_score * 0.4 + severity_score * 0.4 + quality_score * 0.2
-    /// 对 proposal_a 和 proposal_b 分别评分，取高分者。
+    /// 总分 = agent_tier * 0.4 + severity * 0.4 + quality * 0.2
+    /// 对 proposal_a 和 proposal_b 分别用各自 agent 的 tier 评分，取高分者。
     pub fn resolve_conflict(&self, conflict: &AgentConflict) -> String {
-        // 获取 Agent 的 tier 分数（取冲突双方中较高者）
-        let tier_score = conflict
-            .agents
-            .iter()
-            .map(|id| match id {
-                AgentId::Character | AgentId::Narrative | AgentId::Theme | AgentId::EditorInChief => 3,
-                _ => 1,
-            })
-            .max()
-            .unwrap_or(1) as f64;
+        fn agent_tier(id: &AgentId) -> f64 {
+            match id {
+                AgentId::Character
+                | AgentId::Narrative
+                | AgentId::Theme
+                | AgentId::EditorInChief => 3.0,
+                _ => 1.0,
+            }
+        }
 
-        let severity_score = match conflict.severity {
+        let severity_weight = match conflict.severity {
             ConflictSeverity::Critical => 3.0,
             ConflictSeverity::Moderate => 2.0,
             ConflictSeverity::Minor => 1.0,
         };
 
-        let score = |proposal: &str| -> f64 {
+        let score = |proposal: &str, tier: f64| -> f64 {
             let quality = (proposal.len() as f64 / 50.0).min(5.0);
-            tier_score * 0.4 + severity_score * 0.4 + quality * 0.2
+            tier * 0.4 + severity_weight * 0.4 + quality * 0.2
         };
 
-        let score_a = score(&conflict.proposal_a);
-        let score_b = score(&conflict.proposal_b);
+        let score_a = score(&conflict.proposal_a, agent_tier(&conflict.agent_a));
+        let score_b = score(&conflict.proposal_b, agent_tier(&conflict.agent_b));
 
         if score_a >= score_b {
             conflict.proposal_a.clone()
@@ -710,7 +732,15 @@ impl Orchestrator {
                     run_serial(agents, ctx, registry, bridge, request.task_type, observer).await
                 }
                 AgentTopology::Parallel { agents } => {
-                    run_parallel(agents, ctx, registry, bridge, request.task_type, observer).await
+                    let (outputs, usages, success_count) = run_parallel(
+                        agents, ctx, registry, bridge, request.task_type, observer,
+                    )
+                    .await;
+                    // 回写 ctx（升级轮次需要前序产出）
+                    for (id, ref output) in &outputs {
+                        ctx.record_output(*id, output.clone());
+                    }
+                    (outputs, usages, success_count)
                 }
                 AgentTopology::HermesCouncil { analysts, chair } => {
                     // Phase 1: 并行分析 → Phase 2: Chair 串行综合
@@ -1027,14 +1057,99 @@ mod tests {
     fn test_resolve_conflict_returns_a() {
         let orch = Orchestrator::new();
         let conflict = AgentConflict {
-            agents: vec![AgentId::Character, AgentId::World],
+            agent_a: AgentId::Character,
+            agent_b: AgentId::World,
             description: "角色位置矛盾".into(),
             proposal_a: "方案A: 角色在屋内".into(),
             proposal_b: "方案B: 角色在花园".into(),
             severity: ConflictSeverity::Moderate,
         };
         let resolved = orch.resolve_conflict(&conflict);
+        // Character (Pro=3.0) vs World (Flash=1.0) — same length, Character wins
         assert_eq!(resolved, "方案A: 角色在屋内");
+    }
+
+    #[test]
+    fn test_resolve_conflict_tier_matters() {
+        let orch = Orchestrator::new();
+        // Two Flash agents, identical proposal length → tie broken by scoring order (a >= b)
+        let conflict = AgentConflict {
+            agent_a: AgentId::World,
+            agent_b: AgentId::Economy,
+            description: "资源冲突".into(),
+            proposal_a: "A".into(),
+            proposal_b: "B".into(),
+            severity: ConflictSeverity::Minor,
+        };
+        let resolved = orch.resolve_conflict(&conflict);
+        // Both Flash=1.0, same length → score_a >= score_b → returns proposal_a
+        assert_eq!(resolved, "A");
+    }
+
+    // ── ranges_overlap ──
+
+    #[test]
+    fn test_ranges_overlap_exact_match() {
+        let a = TextRange {
+            start_line: 10, start_column: 5, end_line: 12, end_column: 10,
+            start_byte: 0, end_byte: 50,
+        };
+        let b = a;
+        assert!(ranges_overlap(a, b));
+    }
+
+    #[test]
+    fn test_ranges_overlap_partial_same_lines() {
+        let a = TextRange {
+            start_line: 5, start_column: 0, end_line: 8, end_column: 20,
+            start_byte: 0, end_byte: 100,
+        };
+        let b = TextRange {
+            start_line: 7, start_column: 0, end_line: 10, end_column: 5,
+            start_byte: 50, end_byte: 150,
+        };
+        assert!(ranges_overlap(a, b));
+    }
+
+    #[test]
+    fn test_ranges_overlap_non_overlapping_lines() {
+        let a = TextRange {
+            start_line: 1, start_column: 0, end_line: 3, end_column: 0,
+            start_byte: 0, end_byte: 30,
+        };
+        let b = TextRange {
+            start_line: 5, start_column: 0, end_line: 8, end_column: 0,
+            start_byte: 40, end_byte: 80,
+        };
+        assert!(!ranges_overlap(a, b));
+    }
+
+    #[test]
+    fn test_ranges_overlap_same_line_adjacent_non_overlapping() {
+        let a = TextRange {
+            start_line: 3, start_column: 0, end_line: 3, end_column: 10,
+            start_byte: 0, end_byte: 10,
+        };
+        let b = TextRange {
+            start_line: 3, start_column: 11, end_line: 3, end_column: 20,
+            start_byte: 11, end_byte: 20,
+        };
+        // a ends at col 10, b starts at col 11 → non-overlapping
+        assert!(!ranges_overlap(a, b));
+    }
+
+    #[test]
+    fn test_ranges_overlap_touching_lines() {
+        let a = TextRange {
+            start_line: 1, start_column: 0, end_line: 5, end_column: 10,
+            start_byte: 0, end_byte: 50,
+        };
+        let b = TextRange {
+            start_line: 5, start_column: 5, end_line: 8, end_column: 0,
+            start_byte: 45, end_byte: 80,
+        };
+        // a ends at line 5 col 10, b starts at line 5 col 5 → same line, overlapping
+        assert!(ranges_overlap(a, b));
     }
 
     #[test]

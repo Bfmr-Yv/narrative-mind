@@ -53,7 +53,13 @@ export function Editor({
   const monacoRef = useRef<any>(null);
   const decorationsRef = useRef<string[]>([]);
   const glyphRef = useRef<string[]>([]);
+  const proposalsRef = useRef<ProposalReady[]>([]);
   const [popup, setPopup] = useState<PopupState | null>(null);
+
+  // ── Sync proposals to ref (OnMount 闭包只执行一次，必须通过 ref 读最新值) ──
+  useEffect(() => {
+    proposalsRef.current = proposals;
+  }, [proposals]);
 
   // ── Editor mount ──
   const handleMount: OnMount = useCallback(
@@ -95,8 +101,8 @@ export function Editor({
         if (!target.position) return;
 
         const { lineNumber } = target.position;
-        // Find a proposal at the clicked line
-        const match = proposals.find(
+        // Find a proposal at the clicked line (read from ref — always latest)
+        const match = proposalsRef.current.find(
           (p) =>
             p.location &&
             p.location.start_line <= lineNumber &&
@@ -128,7 +134,7 @@ export function Editor({
         });
       });
     },
-    [readOnly, proposals]
+    [readOnly]
   );
 
   // ── 标注层更新（背景高亮 + hover） ──

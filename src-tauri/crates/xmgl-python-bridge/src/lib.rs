@@ -6,6 +6,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use xmgl_core::{CoreError, CoreResult, TaskType};
 
@@ -117,8 +118,8 @@ pub struct PythonBridge {
     base_url: String,
     client: Client,
     health_check_interval: Duration,
-    restart_on_failure: AtomicBool,
-    consecutive_failures: AtomicU32,
+    restart_on_failure: Arc<AtomicBool>,
+    consecutive_failures: Arc<AtomicU32>,
 }
 
 impl Clone for PythonBridge {
@@ -127,12 +128,8 @@ impl Clone for PythonBridge {
             base_url: self.base_url.clone(),
             client: self.client.clone(),
             health_check_interval: self.health_check_interval,
-            restart_on_failure: AtomicBool::new(
-                self.restart_on_failure.load(Ordering::Relaxed),
-            ),
-            consecutive_failures: AtomicU32::new(
-                self.consecutive_failures.load(Ordering::Relaxed),
-            ),
+            restart_on_failure: Arc::clone(&self.restart_on_failure),
+            consecutive_failures: Arc::clone(&self.consecutive_failures),
         }
     }
 }
@@ -151,8 +148,8 @@ impl PythonBridge {
             base_url: base_url.unwrap_or(DEFAULT_BASE_URL).trim_end_matches('/').to_string(),
             client,
             health_check_interval: Duration::from_secs(DEFAULT_HEALTH_CHECK_INTERVAL_SECS),
-            restart_on_failure: AtomicBool::new(false),
-            consecutive_failures: AtomicU32::new(0),
+            restart_on_failure: Arc::new(AtomicBool::new(false)),
+            consecutive_failures: Arc::new(AtomicU32::new(0)),
         })
     }
 
