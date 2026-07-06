@@ -254,12 +254,29 @@ fn ranges_overlap(a: TextRange, b: TextRange) -> bool {
     true
 }
 
+/// 从 AgentFinding 的 agent_id 字符串解析回 AgentId 枚举。
+fn parse_agent_id(s: &str) -> Option<AgentId> {
+    match s {
+        "Character" => Some(AgentId::Character),
+        "World" => Some(AgentId::World),
+        "Narrative" => Some(AgentId::Narrative),
+        "Prose" => Some(AgentId::Prose),
+        "Theme" => Some(AgentId::Theme),
+        "Economy" => Some(AgentId::Economy),
+        "ReaderExpectation" => Some(AgentId::ReaderExpectation),
+        "Conception" => Some(AgentId::Conception),
+        "EditorInChief" => Some(AgentId::EditorInChief),
+        _ => None,
+    }
+}
+
 /// 检测 Hermes Council 中各 Agent 之间的冲突。
 ///
 /// 如果两个不同 agent 指向重叠的文本位置但给出不同 severity
-/// 或矛盾建议，生成额外的 `AgentFinding` 标记冲突。
-pub fn detect_conflicts(findings: &[AgentFinding]) -> Vec<AgentFinding> {
-    let mut conflicts = Vec::new();
+/// 或矛盾建议，同时产出 `AgentFinding`（前端展示）和 `AgentConflict`（供 resolve_conflict 裁决）。
+pub fn detect_conflicts(findings: &[AgentFinding]) -> (Vec<AgentFinding>, Vec<AgentConflict>) {
+    let mut conflict_findings = Vec::new();
+    let mut agent_conflicts = Vec::new();
 
     for (i, a) in findings.iter().enumerate() {
         for b in findings.iter().skip(i + 1) {
@@ -282,13 +299,16 @@ pub fn detect_conflicts(findings: &[AgentFinding]) -> Vec<AgentFinding> {
                     && b.suggestion.is_some()
                     && a.suggestion != b.suggestion)
             {
-                conflicts.push(AgentFinding {
+                let conflict_severity = match a.severity.max(b.severity) {
+                    Severity::Critical => ConflictSeverity::Critical,
+                    Severity::Warn => ConflictSeverity::Moderate,
+                    _ => ConflictSeverity::Minor,
+                };
+
+                // AgentFinding — 前端展示
+                conflict_findings.push(AgentFinding {
                     agent_id: "HermesCouncil".into(),
-                    severity: if a.severity > b.severity {
-                        a.severity
-                    } else {
-                        b.severity
-                    },
+                    severity: a.severity.max(b.severity),
                     title: format!(
                         "[CONFLICT] {} vs {}: {}",
                         a.agent_id, b.agent_id, a.title
@@ -303,11 +323,28 @@ pub fn detect_conflicts(findings: &[AgentFinding]) -> Vec<AgentFinding> {
                         .format("%Y-%m-%dT%H:%M:%SZ")
                         .to_string(),
                 });
+
+                // AgentConflict — 结构化冲突，供 resolve_conflict 裁决
+                if let (Some(agent_a), Some(agent_b)) =
+                    (parse_agent_id(&a.agent_id), parse_agent_id(&b.agent_id))
+                {
+                    agent_conflicts.push(AgentConflict {
+                        agent_a,
+                        agent_b,
+                        description: format!(
+                            "{} vs {}: {}",
+                            a.agent_id, b.agent_id, a.title
+                        ),
+                        proposal_a: a.suggestion.clone().unwrap_or_default(),
+                        proposal_b: b.suggestion.clone().unwrap_or_default(),
+                        severity: conflict_severity,
+                    });
+                }
             }
         }
     }
 
-    conflicts
+    (conflict_findings, agent_conflicts)
 }
 
 /// 计算从行首到指定字节位置的 UTF-16 code unit 偏移（Monaco 列号）。
@@ -782,14 +819,19 @@ impl Orchestrator {
                 if matches!(topology, AgentTopology::HermesCouncil { .. })
                     && self.enable_reflection
                 {
-                    let conflicts = detect_conflicts(&findings);
-                    if !conflicts.is_empty() {
-                        let resolutions: Vec<String> = conflicts
+                    let (conflict_findings, agent_conflicts) = detect_conflicts(&findings);
+                    if !agent_conflicts.is_empty() {
+                        // Phase 4: 将冲突 finding 追加到结果
+                        findings.extend(conflict_findings);
+
+                        // Phase 5: 对每个冲突调 resolve_conflict 加权裁决
+                        let resolutions: Vec<String> = agent_conflicts
                             .iter()
-                            .map(|c| {
+                            .map(|ac| {
+                                let winner = self.resolve_conflict(ac);
                                 format!(
-                                    "[{:?}] {} — 建议人工审核",
-                                    c.severity, c.title
+                                    "[{:?}] {:?} vs {:?} → 裁决: {}",
+                                    ac.severity, ac.agent_a, ac.agent_b, winner
                                 )
                             })
                             .collect();
@@ -801,8 +843,8 @@ impl Orchestrator {
                             description: resolutions.join("\n"),
                             location: None,
                             suggestion: Some(format!(
-                                "以上 {} 个冲突已自动标记，请人工审核并裁决。",
-                                conflicts.len()
+                                "以上 {} 个冲突已通过加权评分自动裁决，请人工审核确认。",
+                                agent_conflicts.len()
                             )),
                             timestamp: chrono::Utc::now()
                                 .format("%Y-%m-%dT%H:%M:%SZ")
