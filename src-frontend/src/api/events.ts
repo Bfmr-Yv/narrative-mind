@@ -19,7 +19,7 @@ export interface ProposalReady {
   proposal_id: string;
   agent_id: string;
   title: string;
-  severity: string;
+  severity: import("../types").Severity;
   location?: { start_line: number; start_column: number; end_line: number; end_column: number };
 }
 

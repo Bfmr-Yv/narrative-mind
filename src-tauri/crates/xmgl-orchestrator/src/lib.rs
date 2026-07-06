@@ -3,9 +3,9 @@
 //! Phase B: 定义调度类型与枚举，骨架 Orchestrator。
 //! Phase C: 填充复杂度预判、拓扑选择、Hermes Council 协议实现。
 
-use xmgl_core::{AgentId, CoreResult, TaskComplexity, TaskType};
+use xmgl_core::{AgentFinding, AgentId, CoreResult, Severity, TaskComplexity, TaskType, TextRange};
 use xmgl_agent::{AgentRegistry, SharedContext};
-use xmgl_python_bridge::PythonBridge;
+use xmgl_python_bridge::{LLMUsage, PythonBridge};
 
 // =========================================================================
 // Agent 拓扑
@@ -69,7 +69,8 @@ pub struct AnalysisRequest {
 pub enum AnalysisTrigger {
     /// 用户手动触发
     Manual,
-    /// 自动触发（如保存章节后自动分析）
+    /// 自动触发（如保存章节后自动分析）— Phase G 被动模式使用
+    #[allow(dead_code)]
     Auto,
 }
 
@@ -103,6 +104,27 @@ pub enum ConflictSeverity {
 }
 
 // =========================================================================
+// AnalysisObserver — 观察者 trait（Tauri 事件 + 成本追踪的解耦接口）
+// =========================================================================
+
+/// 分析过程观察者。
+///
+/// Orchestrator 不依赖 Tauri，通过此 trait 解耦。
+/// TG 2 在 `xmgl-tauri` 中实现此 trait，用 `AppHandle.emit()` 发事件。
+pub trait AnalysisObserver: Send + Sync {
+    fn on_agent_start(&self, agent_id: &str, agent_name: &str, progress_pct: f64);
+    fn on_agent_done(&self, agent_id: &str, agent_name: &str, progress_pct: f64);
+    fn on_analysis_complete(
+        &self,
+        request_id: &str,
+        total_cost_usd: f64,
+        total_latency_ms: u64,
+        agent_count: u32,
+        findings_count: u32,
+    );
+}
+
+// =========================================================================
 // Orchestrator 骨架
 // =========================================================================
 
@@ -115,6 +137,113 @@ pub struct AnalysisResult {
     pub topology: AgentTopology,
     /// 任务复杂度
     pub complexity: TaskComplexity,
+    /// 从 Agent JSON 输出解析的结构化发现
+    pub findings: Vec<AgentFinding>,
+    /// 每个 Agent 的 LLM 用量
+    pub usages: Vec<(AgentId, LLMUsage)>,
+    /// 累计成本 (USD)
+    pub total_cost_usd: f64,
+    /// 累计延迟 (ms)
+    pub total_latency_ms: u64,
+}
+
+/// 从所有 Agent 的 JSON 输出中解析结构化发现。
+///
+/// 每个 Agent 的输出应为 `{"findings": [...]}` 格式。
+/// 如有 `quote` 字段，通过 `find_text_range` 定位行号。
+fn parse_findings(
+    agent_outputs: &[(AgentId, String)],
+    chapter_text: &str,
+) -> Vec<AgentFinding> {
+    let mut findings = Vec::new();
+
+    for (agent_id, output) in agent_outputs {
+        // 跳过错误输出
+        if output.contains("\"error\"") {
+            continue;
+        }
+
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(output) {
+            if let Some(finding_list) = parsed.get("findings").and_then(|v| v.as_array()) {
+                for f in finding_list {
+                    let title = f
+                        .get("title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Untitled")
+                        .to_string();
+                    let description = f
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let severity = match f
+                        .get("severity")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Info")
+                    {
+                        "Critical" => Severity::Critical,
+                        "Warn" => Severity::Warn,
+                        _ => Severity::Info,
+                    };
+                    let quote = f.get("quote").and_then(|v| v.as_str()).unwrap_or("");
+                    let suggestion = f
+                        .get("suggestion")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| *s != "null" && !s.is_empty())
+                        .map(|s| s.to_string());
+
+                    let location = if !quote.is_empty() {
+                        find_text_range(chapter_text, quote)
+                    } else {
+                        None
+                    };
+
+                    findings.push(AgentFinding {
+                        agent_id: format!("{:?}", agent_id),
+                        severity,
+                        title,
+                        description,
+                        location,
+                        suggestion,
+                        timestamp: chrono::Utc::now()
+                            .format("%Y-%m-%dT%H:%M:%SZ")
+                            .to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    findings
+}
+
+/// 在文本中搜索片段，返回其行/列/字节范围。
+fn find_text_range(haystack: &str, needle: &str) -> Option<TextRange> {
+    let start_byte = haystack.find(needle)?;
+    let end_byte = start_byte + needle.len();
+
+    let start_line = haystack[..start_byte].matches('\n').count() as u32 + 1;
+    let last_nl_before = haystack[..start_byte]
+        .rfind('\n')
+        .map(|p| p + 1)
+        .unwrap_or(0);
+    let start_column = (start_byte - last_nl_before) as u32 + 1;
+
+    let end_line = haystack[..end_byte].matches('\n').count() as u32 + 1;
+    let last_nl_end = haystack[..end_byte]
+        .rfind('\n')
+        .map(|p| p + 1)
+        .unwrap_or(0);
+    let end_column = (end_byte - last_nl_end) as u32 + 1;
+
+    Some(TextRange {
+        start_line,
+        start_column,
+        end_line,
+        end_column,
+        start_byte,
+        end_byte,
+    })
 }
 
 /// 调度中心 — Phase D 实现。
@@ -309,15 +438,17 @@ impl Orchestrator {
     ///
     /// 流程：
     /// 1. 预判复杂度 → 选择拓扑
-    /// 2. 依次调用 Agent
+    /// 2. 依次调用每个 Agent（传入 task_type，收集 usage）
     /// 3. 如果全部失败且还有升级空间，升级拓扑重试
-    /// 4. 记录最终结果到 SharedContext
+    /// 4. 解析所有 Agent 的 JSON 输出 → Vec<AgentFinding>
+    /// 5. 通过 observer 回调通知 Tauri 前端
     pub async fn run_analysis(
         &self,
         request: &AnalysisRequest,
         ctx: &mut SharedContext,
         registry: &AgentRegistry,
         bridge: &mut PythonBridge,
+        observer: Option<&dyn AnalysisObserver>,
     ) -> CoreResult<AnalysisResult> {
         let text_length = ctx.chapter_text.len();
         let complexity = self.predict_complexity(request.task_type, text_length);
@@ -326,20 +457,41 @@ impl Orchestrator {
 
         loop {
             let agent_ids = topology.agent_ids();
+            let total = agent_ids.len() as f64;
             let mut outputs = Vec::new();
+            let mut usages = Vec::new();
             let mut success_count = 0;
 
-            for agent_id in &agent_ids {
+            for (idx, agent_id) in agent_ids.iter().enumerate() {
                 if let Some(agent) = registry.get(*agent_id) {
                     if agent.enabled() {
-                        match agent.analyze(ctx, bridge).await {
-                            Ok(output) => {
+                        // 通知观察者：Agent 开始
+                        if let Some(obs) = observer {
+                            obs.on_agent_start(
+                                &format!("{:?}", agent_id),
+                                agent.name(),
+                                (idx as f64 / total) * 100.0,
+                            );
+                        }
+
+                        match agent.analyze(ctx, bridge, request.task_type).await {
+                            Ok((output, usage_opt)) => {
                                 ctx.record_output(*agent_id, output.clone());
                                 outputs.push((*agent_id, output));
                                 success_count += 1;
+                                if let Some(usage) = usage_opt {
+                                    usages.push((*agent_id, usage));
+                                }
+                                // 通知观察者：Agent 完成
+                                if let Some(obs) = observer {
+                                    obs.on_agent_done(
+                                        &format!("{:?}", agent_id),
+                                        agent.name(),
+                                        ((idx + 1) as f64 / total) * 100.0,
+                                    );
+                                }
                             }
                             Err(e) => {
-                                // Agent 失败不阻塞其他 Agent，记录错误
                                 let err_msg = format!("{{\"error\": \"{e}\"}}");
                                 ctx.record_output(*agent_id, err_msg.clone());
                                 outputs.push((*agent_id, err_msg));
@@ -354,10 +506,33 @@ impl Orchestrator {
                 || upgrade_round >= self.max_upgrade_rounds
                 || self.upgrade_topology(&topology, request.task_type).is_none()
             {
+                // 解析 findings
+                let findings = parse_findings(&outputs, &ctx.chapter_text);
+                let total_cost_usd = usages.iter().map(|(_, u)| u.cost_usd).sum();
+                let total_latency_ms = usages
+                    .iter()
+                    .map(|(_, u)| u.latency_ms as u64)
+                    .sum();
+
+                // 通知观察者：分析完成
+                if let Some(obs) = observer {
+                    obs.on_analysis_complete(
+                        &request.request_id,
+                        total_cost_usd,
+                        total_latency_ms,
+                        agent_ids.len() as u32,
+                        findings.len() as u32,
+                    );
+                }
+
                 return Ok(AnalysisResult {
                     agent_outputs: outputs,
                     topology,
                     complexity,
+                    findings,
+                    usages,
+                    total_cost_usd,
+                    total_latency_ms,
                 });
             }
 
@@ -365,15 +540,19 @@ impl Orchestrator {
             if let Some(upgraded) = self.upgrade_topology(&topology, request.task_type) {
                 topology = upgraded;
                 upgrade_round += 1;
-                // 清空上一轮的错误输出
                 for (agent_id, _) in &outputs {
                     ctx.outputs.remove(agent_id);
                 }
             } else {
+                let findings = parse_findings(&outputs, &ctx.chapter_text);
                 return Ok(AnalysisResult {
                     agent_outputs: outputs,
                     topology,
                     complexity,
+                    findings,
+                    usages,
+                    total_cost_usd: 0.0,
+                    total_latency_ms: 0,
                 });
             }
         }
@@ -651,7 +830,7 @@ mod tests {
             context_note: None,
         };
 
-        let result = orch.run_analysis(&request, &mut ctx, &registry, &mut bridge).await;
+        let result = orch.run_analysis(&request, &mut ctx, &registry, &mut bridge, None).await;
         match result {
             Ok(ar) => {
                 // 无升级 → Moderate → Serial(3) → 全部失败但直接返回
@@ -672,6 +851,10 @@ mod tests {
             agent_outputs: vec![(AgentId::Character, "{}".into())],
             topology: AgentTopology::Single(AgentId::Character),
             complexity: TaskComplexity::Simple,
+            findings: vec![],
+            usages: vec![],
+            total_cost_usd: 0.0,
+            total_latency_ms: 0,
         };
         assert_eq!(result.agent_outputs.len(), 1);
         assert_eq!(result.complexity, TaskComplexity::Simple);

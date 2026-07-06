@@ -2,12 +2,14 @@
 //!
 //! Phase B: AppState、项目/章节 Tauri commands、事件常量。
 //! Phase D: 接入 Orchestrator、agent:progress / proposal:ready / analysis:complete 事件。
+//! Phase F: TauriAnalysisObserver 接线 + 成本日志记录。
 
 pub mod commands;
 
+use tauri::Emitter;
 use tokio::sync::Mutex;
 use xmgl_agent::AgentRegistry;
-use xmgl_orchestrator::Orchestrator;
+use xmgl_orchestrator::{AnalysisObserver, Orchestrator};
 use xmgl_project::ProjectManager;
 use xmgl_python_bridge::PythonBridge;
 
@@ -45,6 +47,36 @@ impl AppState {
             orchestrator: Orchestrator::new(),
         })
     }
+
+    /// 记录一次 LLM 调用成本到 SQLite。
+    #[allow(clippy::too_many_arguments)]
+    pub fn log_cost_entry(
+        &self,
+        agent_id: &str,
+        task_type: &str,
+        model: &str,
+        input_tokens: u32,
+        output_tokens: u32,
+        cost_usd: f64,
+        latency_ms: u32,
+    ) -> Result<(), String> {
+        let db_path = self.project_manager.db_path();
+        let conn =
+            xmgl_memory::open_connection(db_path).map_err(|e| e.to_string())?;
+        let entry = xmgl_memory::CostEntry {
+            timestamp: chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+            agent_id: agent_id.to_string(),
+            task_type: task_type.to_string(),
+            model: model.to_string(),
+            input_tokens,
+            output_tokens,
+            cost_usd,
+            latency_ms,
+        };
+        xmgl_memory::log_cost(&conn, &entry).map_err(|e| e.to_string())
+    }
 }
 
 // =========================================================================
@@ -64,6 +96,61 @@ pub mod events {
     /// 分析完成，成本+耗时汇总。
     /// Payload: `{ request_id: String, total_cost_usd: f64, total_latency_ms: u32, agent_count: u32 }`
     pub const ANALYSIS_COMPLETE: &str = "analysis:complete";
+}
+
+// =========================================================================
+// TauriAnalysisObserver — AnalysisObserver trait 实现
+// =========================================================================
+
+/// TG 2: 实现 `AnalysisObserver` trait，通过 Tauri `emit()` 向前端推送事件。
+pub struct TauriAnalysisObserver {
+    pub app_handle: tauri::AppHandle,
+}
+
+impl AnalysisObserver for TauriAnalysisObserver {
+    fn on_agent_start(&self, agent_id: &str, agent_name: &str, progress_pct: f64) {
+        let _ = self.app_handle.emit(
+            events::AGENT_PROGRESS,
+            serde_json::json!({
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+                "stage": "start",
+                "progress_pct": progress_pct,
+            }),
+        );
+    }
+
+    fn on_agent_done(&self, agent_id: &str, agent_name: &str, progress_pct: f64) {
+        let _ = self.app_handle.emit(
+            events::AGENT_PROGRESS,
+            serde_json::json!({
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+                "stage": "done",
+                "progress_pct": progress_pct,
+            }),
+        );
+    }
+
+    fn on_analysis_complete(
+        &self,
+        request_id: &str,
+        total_cost_usd: f64,
+        total_latency_ms: u64,
+        agent_count: u32,
+        findings_count: u32,
+    ) {
+        let _ = self.app_handle.emit(
+            events::ANALYSIS_COMPLETE,
+            serde_json::json!({
+                "request_id": request_id,
+                "total_cost": total_cost_usd,
+                "total_latency": total_latency_ms,
+                "agent_count": agent_count,
+                "findings_count": findings_count,
+            }),
+        );
+    }
 }
 
 // =========================================================================

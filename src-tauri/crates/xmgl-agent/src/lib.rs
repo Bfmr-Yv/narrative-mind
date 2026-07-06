@@ -6,8 +6,8 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
-use xmgl_python_bridge::PythonBridge;
-use xmgl_core::{AgentId, CoreResult, ModelTier};
+use xmgl_python_bridge::{PythonBridge, LLMUsage};
+use xmgl_core::{AgentId, CoreResult, ModelTier, TaskType};
 
 // =========================================================================
 // SharedContext — Agent 间共享上下文
@@ -97,8 +97,11 @@ pub trait Agent: Send + Sync {
     ///
     /// `ctx` 包含当前项目/章节信息及前序 Agent 产出。
     /// `bridge` 为 Python sidecar HTTP 客户端，用于调用 LLM。
-    /// 返回分析结果文本（通常为 JSON）。
-    async fn analyze(&self, ctx: &SharedContext, bridge: &mut PythonBridge) -> CoreResult<String>;
+    /// `task_type` 动态选择 prompt key。
+    /// 返回分析结果文本和可选的 LLM 用量统计。
+    async fn analyze(
+        &self, ctx: &SharedContext, bridge: &mut PythonBridge, task_type: TaskType,
+    ) -> CoreResult<(String, Option<LLMUsage>)>;
 
     /// Agent 使用的 prompt key（对应 Python 注册表）。
     fn prompt_key(&self) -> &'static str;
@@ -226,11 +229,22 @@ macro_rules! agent_impl {
                 $body
             }
 
-            async fn analyze(&self, ctx: &SharedContext, bridge: &mut PythonBridge) -> CoreResult<String> {
+            async fn analyze(
+                &self,
+                ctx: &SharedContext,
+                bridge: &mut PythonBridge,
+                task_type: TaskType,
+            ) -> CoreResult<(String, Option<LLMUsage>)> {
                 let vars = self.build_variables(ctx);
-                let response = bridge.call_agent(self.prompt_key(), &vars, $id.as_task_type_str()).await?;
+                let response = bridge
+                    .call_agent(task_type.as_str(), &vars, task_type.as_str())
+                    .await?;
                 if response.success {
-                    Ok(response.result.map(|v| v.to_string()).unwrap_or_default())
+                    let output = response
+                        .result
+                        .map(|v| v.to_string())
+                        .unwrap_or_default();
+                    Ok((output, response.usage))
                 } else {
                     Err(xmgl_core::CoreError::Internal(
                         response.error.unwrap_or_else(|| "LLM call failed".into()),

@@ -154,8 +154,8 @@ export interface AgentAnnotation {
   agent_name: string;
   /** 标注消息 */
   message: string;
-  /** 严重级别 */
-  severity: "info" | "warn" | "critical";
+  /** 严重级别（与 Rust Severity PascalCase 对齐） */
+  severity: Severity;
   /** 文本位置 */
   location?: {
     start_line: number;

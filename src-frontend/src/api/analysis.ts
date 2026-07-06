@@ -5,6 +5,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import type { AgentFinding } from "../types";
 
 export interface AgentOutput {
   agent_id: string;
@@ -17,6 +18,12 @@ export interface AnalysisOutput {
   agent_outputs: AgentOutput[];
   topology: string;
   complexity: string;
+  /** 结构化的 Agent 发现 */
+  findings: AgentFinding[];
+  /** 累计成本 (USD) */
+  total_cost_usd: number;
+  /** 累计延迟 (ms) */
+  total_latency_ms: number;
 }
 
 /**

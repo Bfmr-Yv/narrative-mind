@@ -10,7 +10,8 @@ use thiserror::Error;
 // PAD 情感模型
 // =========================================================================
 
-/// PAD 三维情感坐标
+/// PAD 三维情感坐标（Phase G 将接入 Agent 分析管道）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PADState {
     /// 愉悦度 [-1, 1]
@@ -211,6 +212,20 @@ pub struct TextRange {
     pub end_byte: usize,
 }
 
+/// Agent 分析发现 — 从 LLM 输出的 findings 数组解析而来。
+///
+/// 与前端 `src/types/index.ts` 的 `AgentFinding` 对齐。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentFinding {
+    pub agent_id: String,
+    pub severity: Severity,
+    pub title: String,
+    pub description: String,
+    pub location: Option<TextRange>,
+    pub suggestion: Option<String>,
+    pub timestamp: String,
+}
+
 // =========================================================================
 // 项目 & 章节
 // =========================================================================
@@ -241,6 +256,8 @@ pub struct ChapterData {
 // 定价级别
 // =========================================================================
 
+/// 定价层级（Phase G 成本面板使用）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PricingTier {
     Free,

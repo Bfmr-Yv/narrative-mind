@@ -91,22 +91,23 @@ function App() {
       setTopology(result.topology);
       setComplexity(result.complexity);
 
-      // 将 Agent 输出转换为标注（简化版：整段标注）
-      const newAnnotations: AgentAnnotation[] = result.agent_outputs.map(
-        (ao, idx) => ({
-          id: `${result.request_id}-${ao.agent_id}`,
-          agent_id: ao.agent_id,
-          agent_name: ao.agent_name,
-          message: ao.output.substring(0, 200),
-          severity: "info" as const,
-          location: {
-            start_line: 1 + idx,
-            start_column: 1,
-            end_line: 1 + idx,
-            end_column: 10,
-          },
-        })
-      );
+      // 使用后端返回的真实 findings（含文本位置）
+      const newAnnotations: AgentAnnotation[] = result.findings.map((f) => ({
+        id: `${result.request_id}-${f.agent_id}-${f.title}`,
+        agent_id: f.agent_id,
+        agent_name: f.agent_id,
+        message: `${f.title}: ${f.description}`.substring(0, 200),
+        severity: f.severity,
+        location: f.location
+          ? {
+              start_line: f.location.start_line,
+              start_column: f.location.start_column,
+              end_line: f.location.end_line,
+              end_column: f.location.end_column,
+            }
+          : undefined,
+        suggestion: f.suggestion ?? undefined,
+      }));
       setAnnotations(newAnnotations);
     },
     []

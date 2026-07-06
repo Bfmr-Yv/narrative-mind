@@ -2,9 +2,9 @@
 //!
 //! 所有 #[tauri::command] 集中在此模块，避免 proc-macro 命名冲突。
 
-use crate::AppState;
+use crate::{AppState, TauriAnalysisObserver};
 use tauri::State;
-use xmgl_core::{ChapterData, ProjectMeta, TaskType};
+use xmgl_core::{AgentFinding, ChapterData, ProjectMeta, TaskType};
 use xmgl_agent::SharedContext;
 use xmgl_orchestrator::{AnalysisRequest, AnalysisTrigger};
 
@@ -94,6 +94,12 @@ pub struct AnalysisOutput {
     pub agent_outputs: Vec<AgentOutput>,
     pub topology: String,
     pub complexity: String,
+    /// 结构化的 Agent 发现
+    pub findings: Vec<AgentFinding>,
+    /// 累计成本 (USD)
+    pub total_cost_usd: f64,
+    /// 累计延迟 (ms)
+    pub total_latency_ms: u64,
 }
 
 #[derive(serde::Serialize)]
@@ -107,9 +113,11 @@ pub struct AgentOutput {
 ///
 /// `task_type` 为分析类型（如 "pad_compute"、"entity_extract"）。
 /// 系统根据复杂度自动选择拓扑，调用相应 Agent，返回分析结果。
+/// 通过 `TauriAnalysisObserver` 向前端推送实时进度和成本汇总。
 #[tauri::command]
 pub async fn run_analysis(
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     chapter_id: String,
     task_type: String,
 ) -> Result<AnalysisOutput, String> {
@@ -137,15 +145,41 @@ pub async fn run_analysis(
     // 4. 保存 request_id 以便复用
     let request_id = request.request_id.clone();
 
-    // 5. 执行分析
+    // 5. 构造 observer
+    let observer = TauriAnalysisObserver {
+        app_handle: app_handle.clone(),
+    };
+
+    // 6. 执行分析
+    let _start = std::time::Instant::now();
     let mut bridge = state.python_bridge.lock().await;
     let result = state
         .orchestrator
-        .run_analysis(&request, &mut ctx, &state.agent_registry, &mut bridge)
+        .run_analysis(
+            &request,
+            &mut ctx,
+            &state.agent_registry,
+            &mut bridge,
+            Some(&observer),
+        )
         .await
         .map_err(|e| e.to_string())?;
+    drop(bridge); // 释放锁
 
-    // 6. 转换为前端友好格式（复用同一个 request_id）
+    // 7. 写成本日志
+    for (agent_id, usage) in &result.usages {
+        let _ = state.log_cost_entry(
+            &format!("{agent_id:?}"),
+            task_type.as_str(),
+            &usage.model,
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cost_usd,
+            usage.latency_ms,
+        );
+    }
+
+    // 8. 转换为前端友好格式
     let topology = format!("{:?}", result.topology);
     let complexity = format!("{:?}", result.complexity);
     let agent_outputs = result
@@ -163,5 +197,8 @@ pub async fn run_analysis(
         agent_outputs,
         topology,
         complexity,
+        findings: result.findings,
+        total_cost_usd: result.total_cost_usd,
+        total_latency_ms: result.total_latency_ms,
     })
 }
