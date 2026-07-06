@@ -158,13 +158,18 @@ fn parse_findings(
     let mut findings = Vec::new();
 
     for (agent_id, output) in agent_outputs {
-        // 跳过错误输出
-        if output.contains("\"error\"") {
+        // 先 parse JSON，再检查是否为错误输出（顶层有 "error" key 且无 "findings"）
+        let parsed = match serde_json::from_str::<serde_json::Value>(output) {
+            Ok(v) => v,
+            Err(_) => continue, // 非 JSON 输出，跳过
+        };
+
+        // 跳过错误输出：顶层有 "error" 且没有 "findings"
+        if parsed.get("error").is_some() && parsed.get("findings").is_none() {
             continue;
         }
 
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(output) {
-            if let Some(finding_list) = parsed.get("findings").and_then(|v| v.as_array()) {
+        if let Some(finding_list) = parsed.get("findings").and_then(|v| v.as_array()) {
                 for f in finding_list {
                     let title = f
                         .get("title")
@@ -212,29 +217,48 @@ fn parse_findings(
                 }
             }
         }
-    }
 
     findings
 }
 
+/// 计算从行首到指定字节位置的 UTF-16 code unit 偏移（Monaco 列号）。
+fn utf16_column_from_byte(line_prefix: &str, byte_offset: usize) -> u32 {
+    line_prefix[..byte_offset]
+        .chars()
+        .map(|c| c.len_utf16() as u32)
+        .sum::<u32>()
+        + 1 // Monaco 列号从 1 开始
+}
+
 /// 在文本中搜索片段，返回其行/列/字节范围。
+/// 列号使用 UTF-16 code unit 计数，与 Monaco 编辑器对齐。
 fn find_text_range(haystack: &str, needle: &str) -> Option<TextRange> {
     let start_byte = haystack.find(needle)?;
     let end_byte = start_byte + needle.len();
 
     let start_line = haystack[..start_byte].matches('\n').count() as u32 + 1;
-    let last_nl_before = haystack[..start_byte]
+
+    // 当前行的起始字节位置
+    let line_start = haystack[..start_byte]
         .rfind('\n')
         .map(|p| p + 1)
         .unwrap_or(0);
-    let start_column = (start_byte - last_nl_before) as u32 + 1;
+    let col_byte_offset = start_byte - line_start;
+    let start_column = utf16_column_from_byte(
+        &haystack[line_start..],
+        col_byte_offset,
+    );
 
     let end_line = haystack[..end_byte].matches('\n').count() as u32 + 1;
-    let last_nl_end = haystack[..end_byte]
+    let end_line_start = haystack[..end_byte]
         .rfind('\n')
         .map(|p| p + 1)
         .unwrap_or(0);
-    let end_column = (end_byte - last_nl_end) as u32 + 1;
+    let end_col_byte_offset = end_byte - end_line_start;
+    let end_column = utf16_column_from_byte(
+        &haystack[end_line_start..],
+        end_col_byte_offset,
+    );
 
     Some(TextRange {
         start_line,

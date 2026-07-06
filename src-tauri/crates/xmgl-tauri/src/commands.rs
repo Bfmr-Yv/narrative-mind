@@ -150,8 +150,8 @@ pub async fn run_analysis(
         app_handle: app_handle.clone(),
     };
 
-    // 6. 执行分析
-    let _start = std::time::Instant::now();
+    // 6. 执行分析（记录 wall-clock 耗时，含编排开销）
+    let start = std::time::Instant::now();
     let mut bridge = state.python_bridge.lock().await;
     let result = state
         .orchestrator
@@ -165,6 +165,7 @@ pub async fn run_analysis(
         .await
         .map_err(|e| e.to_string())?;
     drop(bridge); // 释放锁
+    let wall_clock_ms = start.elapsed().as_millis() as u64;
 
     // 7. 写成本日志
     for (agent_id, usage) in &result.usages {
@@ -199,6 +200,6 @@ pub async fn run_analysis(
         complexity,
         findings: result.findings,
         total_cost_usd: result.total_cost_usd,
-        total_latency_ms: result.total_latency_ms,
+        total_latency_ms: wall_clock_ms,
     })
 }
