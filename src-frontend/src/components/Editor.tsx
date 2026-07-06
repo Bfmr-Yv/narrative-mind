@@ -277,6 +277,45 @@ export function Editor({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // ── Dismiss popup on scroll ──
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const disp = editor.onDidScrollChange(() => {
+      setPopup(null);
+    });
+    return () => disp.dispose();
+  }, [popup /* re-register when popup changes (including null → open) */]);
+
+  // ── Reposition popup on resize ──
+  useEffect(() => {
+    if (!popup || !editorRef.current) return;
+    const editorDom = editorRef.current.getDomNode();
+    if (!editorDom) return;
+
+    const reposition = () => {
+      if (!popup.range) return;
+      const ed = editorRef.current;
+      if (!ed) return;
+      // Recompute position from the proposal's start location
+      const pos = ed.getScrolledVisiblePosition({
+        lineNumber: popup.range.startLine,
+        column: popup.range.startCol,
+      });
+      if (!pos) return;
+      const rect = editorDom.getBoundingClientRect();
+      setPopup((prev) =>
+        prev
+          ? { ...prev, top: pos.top + 28 + rect.top, left: pos.left + rect.left + 60 }
+          : null
+      );
+    };
+
+    const observer = new ResizeObserver(() => reposition());
+    observer.observe(editorDom);
+    return () => observer.disconnect();
+  }, [popup?.proposalId]); // re-run when popup content changes
+
   // ── Content sync ──
   const handleChange: OnChange = useCallback(
     (value) => {

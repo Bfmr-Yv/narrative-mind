@@ -497,6 +497,10 @@ pub struct Orchestrator {
     pub hermes_enabled: bool,
     /// 最大升级轮数（防止无限升级）
     pub max_upgrade_rounds: u32,
+    /// 是否启用 Phase 4 反思回合
+    pub enable_reflection: bool,
+    /// 最大反思轮数（防止无限循环）
+    pub max_reflection_rounds: u32,
 }
 
 impl Orchestrator {
@@ -505,6 +509,8 @@ impl Orchestrator {
         Self {
             hermes_enabled: true,
             max_upgrade_rounds: 2,
+            enable_reflection: true,
+            max_reflection_rounds: 2,
         }
     }
 
@@ -770,7 +776,40 @@ impl Orchestrator {
                 || upgrade_round >= self.max_upgrade_rounds
                 || self.upgrade_topology(&topology, request.task_type).is_none()
             {
-                let findings = parse_findings(&outputs, &ctx.chapter_text);
+                let mut findings = parse_findings(&outputs, &ctx.chapter_text);
+
+                // ── Phase 4-5: Hermes Council 冲突裁决 + 最终裁定 ──
+                if matches!(topology, AgentTopology::HermesCouncil { .. })
+                    && self.enable_reflection
+                {
+                    let conflicts = detect_conflicts(&findings);
+                    if !conflicts.is_empty() {
+                        let resolutions: Vec<String> = conflicts
+                            .iter()
+                            .map(|c| {
+                                format!(
+                                    "[{:?}] {} — 建议人工审核",
+                                    c.severity, c.title
+                                )
+                            })
+                            .collect();
+
+                        findings.push(AgentFinding {
+                            agent_id: "HermesCouncil".into(),
+                            severity: Severity::Info,
+                            title: "[RULING] Hermes Council 最终裁决".into(),
+                            description: resolutions.join("\n"),
+                            location: None,
+                            suggestion: Some(format!(
+                                "以上 {} 个冲突已自动标记，请人工审核并裁决。",
+                                conflicts.len()
+                            )),
+                            timestamp: chrono::Utc::now()
+                                .format("%Y-%m-%dT%H:%M:%SZ")
+                                .to_string(),
+                        });
+                    }
+                }
                 let total_cost_usd = usages.iter().map(|(_, u)| u.cost_usd).sum();
                 let total_latency_ms = usages
                     .iter()

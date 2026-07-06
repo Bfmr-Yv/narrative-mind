@@ -35,6 +35,8 @@ config/cost-log.json
 
 # Data
 xmgl.db
+src-python/corpus/lancedb/
+corpus/lancedb/
 projects/
 *.db-journal
 *.db-wal

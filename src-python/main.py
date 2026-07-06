@@ -238,6 +238,10 @@ async def list_prompts():
 # Corpus
 # =========================================================================
 
+# 模块级单例 — 避免每次请求重复加载模型
+from corpus.retriever import Retriever
+_retriever = Retriever()
+
 class CorpusSearchRequest(BaseModel):
     query_text: str
     top_k: int = 5
@@ -247,25 +251,18 @@ class CorpusSearchRequest(BaseModel):
 @app.post("/v1/corpus/search")
 async def corpus_search(req: CorpusSearchRequest):
     """语料向量检索"""
-    from corpus.slice_manager import SliceManager
-    from corpus.retriever import Retriever
-    from corpus.embedder import Embedder
-
-    manager = SliceManager()
-    embedder = Embedder()
-    retriever = Retriever(manager, embedder)
-
-    results = retriever.search(req.query_text, top_k=req.top_k)
+    results = _retriever.search(req.query_text, top_k=req.top_k)
     return {
         "results": [
             {
                 "slice_id": r.get("slice_id", ""),
                 "text": r.get("text", "")[:200],
-                "source": r.get("source", ""),
+                "source_chapter_id": r.get("source_chapter_id", ""),
                 "similarity": r.get("similarity", 0.0),
             }
             for r in results
-        ]
+        ],
+        "total": len(results),
     }
 
 
