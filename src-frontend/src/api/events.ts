@@ -20,6 +20,7 @@ export interface ProposalReady {
   agent_id: string;
   title: string;
   severity: import("../types").Severity;
+  suggestion: string;
   location?: { start_line: number; start_column: number; end_line: number; end_column: number };
 }
 

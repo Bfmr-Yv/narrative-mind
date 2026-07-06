@@ -6,8 +6,9 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Editor, StatusBar, AnalysisPanel } from "./components";
-import { listProjects, listChapters, onAgentProgress, onAnalysisComplete } from "./api";
+import { listProjects, listChapters, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
+import type { ProposalReady } from "./api/events";
 import type { AgentState, AgentAnnotation } from "./types";
 import type { AnalysisOutput } from "./api";
 import "./App.css";
@@ -20,6 +21,7 @@ function App() {
   const [selectedChapter, setSelectedChapter] = useState<ChapterData | null>(null);
   const [editorContent, setEditorContent] = useState("");
   const [annotations, setAnnotations] = useState<AgentAnnotation[]>([]);
+  const [proposals, setProposals] = useState<ProposalReady[]>([]);
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
   const [topology, setTopology] = useState<string>();
   const [complexity, setComplexity] = useState<string>();
@@ -63,7 +65,11 @@ function App() {
       });
     });
 
-    const unlisten2 = onAnalysisComplete((evt: AnalysisComplete) => {
+    const unlisten2 = onProposalReady((p) => {
+      setProposals((prev) => [...prev, p]);
+    });
+
+    const unlisten3 = onAnalysisComplete((evt: AnalysisComplete) => {
       // 标记所有 Agent 为完成
       setAgentStates((prev) =>
         prev.map((a) => (a.status === "running" ? { ...a, status: "done", progress: 100 } : a))
@@ -74,6 +80,7 @@ function App() {
     return () => {
       unlisten1.then((fn) => fn());
       unlisten2.then((fn) => fn());
+      unlisten3.then((fn) => fn());
     };
   }, []);
 
@@ -82,6 +89,7 @@ function App() {
     setSelectedChapter(ch);
     setEditorContent(ch.text);
     setAnnotations([]);
+    setProposals([]);
     setAgentStates([]);
   }, []);
 
@@ -186,6 +194,7 @@ function App() {
               content={editorContent}
               onChange={setEditorContent}
               annotations={annotations}
+              proposals={proposals}
             />
           </div>
 
