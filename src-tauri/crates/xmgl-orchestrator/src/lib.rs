@@ -3,6 +3,7 @@
 //! Phase B: 定义调度类型与枚举，骨架 Orchestrator。
 //! Phase C: 填充复杂度预判、拓扑选择、Hermes Council 协议实现。
 
+use std::sync::Arc;
 use xmgl_core::{AgentFinding, AgentId, CoreResult, Severity, TaskComplexity, TaskType, TextRange};
 use xmgl_agent::{AgentRegistry, SharedContext};
 use xmgl_python_bridge::{LLMUsage, PythonBridge};
@@ -228,6 +229,113 @@ fn utf16_column_from_byte(line_prefix: &str, byte_offset: usize) -> u32 {
         .map(|c| c.len_utf16() as u32)
         .sum::<u32>()
         + 1 // Monaco 列号从 1 开始
+}
+
+// =========================================================================
+// 执行辅助函数
+// =========================================================================
+
+/// 串行执行 agent 列表：后序 Agent 可读取前序产出。
+async fn run_serial(
+    agent_ids: &[AgentId],
+    ctx: &mut SharedContext,
+    registry: &AgentRegistry,
+    bridge: &PythonBridge,
+    task_type: TaskType,
+    observer: Option<&dyn AnalysisObserver>,
+) -> (Vec<(AgentId, String)>, Vec<(AgentId, LLMUsage)>, u32) {
+    let total = agent_ids.len() as f64;
+    let mut outputs = Vec::new();
+    let mut usages = Vec::new();
+    let mut success_count = 0u32;
+
+    for (idx, agent_id) in agent_ids.iter().enumerate() {
+        if let Some(agent) = registry.get(*agent_id) {
+            if agent.enabled() {
+                if let Some(obs) = observer {
+                    obs.on_agent_start(
+                        &format!("{:?}", agent_id),
+                        agent.name(),
+                        (idx as f64 / total) * 100.0,
+                    );
+                }
+
+                match agent.analyze(ctx, bridge, task_type).await {
+                    Ok((output, usage_opt)) => {
+                        ctx.record_output(*agent_id, output.clone());
+                        outputs.push((*agent_id, output));
+                        success_count += 1;
+                        if let Some(usage) = usage_opt {
+                            usages.push((*agent_id, usage));
+                        }
+                        if let Some(obs) = observer {
+                            obs.on_agent_done(
+                                &format!("{:?}", agent_id),
+                                agent.name(),
+                                ((idx + 1) as f64 / total) * 100.0,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        let err_msg = format!("{{\"error\": \"{e}\"}}");
+                        ctx.record_output(*agent_id, err_msg.clone());
+                        outputs.push((*agent_id, err_msg));
+                    }
+                }
+            }
+        }
+    }
+
+    (outputs, usages, success_count)
+}
+
+/// 并行执行 agent 列表：所有 Agent 同时运行，互不依赖。
+async fn run_parallel(
+    agent_ids: &[AgentId],
+    ctx: &SharedContext,
+    registry: &AgentRegistry,
+    bridge: &PythonBridge,
+    task_type: TaskType,
+    _observer: Option<&dyn AnalysisObserver>,
+) -> (Vec<(AgentId, String)>, Vec<(AgentId, LLMUsage)>, u32) {
+    let mut handles = Vec::new();
+
+    for &agent_id in agent_ids {
+        if let Some(agent) = registry.get(agent_id) {
+            if !agent.enabled() {
+                continue;
+            }
+            let agent = Arc::clone(&agent);
+            let bridge = bridge.clone();
+            let ctx = ctx.clone();
+
+            handles.push(tokio::spawn(async move {
+                let result = agent.analyze(&ctx, &bridge, task_type).await;
+                (agent_id, agent.name().to_string(), result)
+            }));
+        }
+    }
+
+    let mut outputs = Vec::new();
+    let mut usages = Vec::new();
+    let mut success_count = 0u32;
+
+    for handle in handles {
+        match handle.await {
+            Ok((agent_id, _name, Ok((output, usage_opt)))) => {
+                outputs.push((agent_id, output));
+                success_count += 1;
+                if let Some(usage) = usage_opt {
+                    usages.push((agent_id, usage));
+                }
+            }
+            _ => {
+                // Task panicked or agent errored — skip
+            }
+        }
+    }
+
+    (outputs, usages, success_count)
 }
 
 /// 在文本中搜索片段，返回其行/列/字节范围。
@@ -480,57 +588,45 @@ impl Orchestrator {
         let mut upgrade_round = 0;
 
         loop {
-            let agent_ids = topology.agent_ids();
-            let total = agent_ids.len() as f64;
-            let mut outputs = Vec::new();
-            let mut usages = Vec::new();
-            let mut success_count = 0;
-
-            for (idx, agent_id) in agent_ids.iter().enumerate() {
-                if let Some(agent) = registry.get(*agent_id) {
-                    if agent.enabled() {
-                        // 通知观察者：Agent 开始
-                        if let Some(obs) = observer {
-                            obs.on_agent_start(
-                                &format!("{:?}", agent_id),
-                                agent.name(),
-                                (idx as f64 / total) * 100.0,
-                            );
-                        }
-
-                        match agent.analyze(ctx, bridge, request.task_type).await {
-                            Ok((output, usage_opt)) => {
-                                ctx.record_output(*agent_id, output.clone());
-                                outputs.push((*agent_id, output));
-                                success_count += 1;
-                                if let Some(usage) = usage_opt {
-                                    usages.push((*agent_id, usage));
-                                }
-                                // 通知观察者：Agent 完成
-                                if let Some(obs) = observer {
-                                    obs.on_agent_done(
-                                        &format!("{:?}", agent_id),
-                                        agent.name(),
-                                        ((idx + 1) as f64 / total) * 100.0,
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                let err_msg = format!("{{\"error\": \"{e}\"}}");
-                                ctx.record_output(*agent_id, err_msg.clone());
-                                outputs.push((*agent_id, err_msg));
-                            }
-                        }
-                    }
+            // ── 按拓扑分派执行 ──
+            let (outputs, usages, success_count) = match &topology {
+                AgentTopology::Single(id) => {
+                    run_serial(&[*id], ctx, registry, bridge, request.task_type, observer).await
                 }
-            }
+                AgentTopology::Serial { agents } => {
+                    run_serial(agents, ctx, registry, bridge, request.task_type, observer).await
+                }
+                AgentTopology::Parallel { agents } => {
+                    run_parallel(agents, ctx, registry, bridge, request.task_type, observer).await
+                }
+                AgentTopology::HermesCouncil { analysts, chair } => {
+                    // Phase 1: 并行分析 → Phase 2: Chair 串行综合
+                    let (mut outputs, mut usages, success) = run_parallel(
+                        analysts, ctx, registry, bridge, request.task_type, observer,
+                    )
+                    .await;
+                    // 记录 analyst 产出到 ctx
+                    for (id, ref output) in &outputs {
+                        ctx.record_output(*id, output.clone());
+                    }
+                    // Chair 综合
+                    let (chair_outputs, chair_usages, chair_success) = run_serial(
+                        &[*chair], ctx, registry, bridge, request.task_type, observer,
+                    )
+                    .await;
+                    outputs.extend(chair_outputs);
+                    usages.extend(chair_usages);
+                    (outputs, usages, success + chair_success)
+                }
+            };
+
+            let agent_ids = topology.agent_ids();
 
             // 如果有成功产出，或者已达最大升级轮数，或者无法再升级，返回结果
             if success_count > 0
                 || upgrade_round >= self.max_upgrade_rounds
                 || self.upgrade_topology(&topology, request.task_type).is_none()
             {
-                // 解析 findings
                 let findings = parse_findings(&outputs, &ctx.chapter_text);
                 let total_cost_usd = usages.iter().map(|(_, u)| u.cost_usd).sum();
                 let total_latency_ms = usages
@@ -538,7 +634,6 @@ impl Orchestrator {
                     .map(|(_, u)| u.latency_ms as u64)
                     .sum();
 
-                // 通知观察者：分析完成
                 if let Some(obs) = observer {
                     obs.on_analysis_complete(
                         &request.request_id,

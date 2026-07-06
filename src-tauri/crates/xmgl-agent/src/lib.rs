@@ -6,6 +6,7 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::sync::Arc;
 use xmgl_python_bridge::{PythonBridge, LLMUsage};
 use xmgl_core::{AgentId, CoreResult, ModelTier, TaskType};
 
@@ -123,7 +124,7 @@ pub trait Agent: Send + Sync {
 ///
 /// 支持按 `AgentId` 查找，供 Orchestrator 调度使用。
 pub struct AgentRegistry {
-    agents: HashMap<AgentId, Box<dyn Agent>>,
+    agents: HashMap<AgentId, Arc<dyn Agent>>,
 }
 
 impl AgentRegistry {
@@ -135,13 +136,13 @@ impl AgentRegistry {
     }
 
     /// 注册一个 Agent。
-    pub fn register(&mut self, agent: Box<dyn Agent>) {
+    pub fn register(&mut self, agent: Arc<dyn Agent>) {
         self.agents.insert(agent.id(), agent);
     }
 
-    /// 按 ID 获取 Agent。
-    pub fn get(&self, id: AgentId) -> Option<&dyn Agent> {
-        self.agents.get(&id).map(|a| a.as_ref())
+    /// 按 ID 获取 Agent（返回 Arc 以支持跨任务共享）。
+    pub fn get(&self, id: AgentId) -> Option<Arc<dyn Agent>> {
+        self.agents.get(&id).cloned()
     }
 
     /// 列出所有已注册 Agent 的 ID。
@@ -164,15 +165,15 @@ impl AgentRegistry {
     /// 创建默认注册表 — 包含全部 9 个 Agent 的骨架实例。
     pub fn with_all_agents() -> Self {
         let mut registry = Self::new();
-        registry.register(Box::new(CharacterAgent));
-        registry.register(Box::new(WorldAgent));
-        registry.register(Box::new(NarrativeAgent));
-        registry.register(Box::new(ProseAgent));
-        registry.register(Box::new(ThemeAgent));
-        registry.register(Box::new(EconomyAgent));
-        registry.register(Box::new(ReaderExpectationAgent));
-        registry.register(Box::new(ConceptionAgent));
-        registry.register(Box::new(EditorInChiefAgent));
+        registry.register(Arc::new(CharacterAgent));
+        registry.register(Arc::new(WorldAgent));
+        registry.register(Arc::new(NarrativeAgent));
+        registry.register(Arc::new(ProseAgent));
+        registry.register(Arc::new(ThemeAgent));
+        registry.register(Arc::new(EconomyAgent));
+        registry.register(Arc::new(ReaderExpectationAgent));
+        registry.register(Arc::new(ConceptionAgent));
+        registry.register(Arc::new(EditorInChiefAgent));
         registry
     }
 }
@@ -402,16 +403,16 @@ mod tests {
 
     #[test]
     fn test_agent_stub_ids() {
-        let agents: Vec<Box<dyn Agent>> = vec![
-            Box::new(CharacterAgent),
-            Box::new(WorldAgent),
-            Box::new(NarrativeAgent),
-            Box::new(ProseAgent),
-            Box::new(ThemeAgent),
-            Box::new(EconomyAgent),
-            Box::new(ReaderExpectationAgent),
-            Box::new(ConceptionAgent),
-            Box::new(EditorInChiefAgent),
+        let agents: Vec<Arc<dyn Agent>> = vec![
+            Arc::new(CharacterAgent),
+            Arc::new(WorldAgent),
+            Arc::new(NarrativeAgent),
+            Arc::new(ProseAgent),
+            Arc::new(ThemeAgent),
+            Arc::new(EconomyAgent),
+            Arc::new(ReaderExpectationAgent),
+            Arc::new(ConceptionAgent),
+            Arc::new(EditorInChiefAgent),
         ];
 
         let ids: Vec<AgentId> = agents.iter().map(|a| a.id()).collect();
@@ -506,7 +507,7 @@ mod tests {
     #[test]
     fn test_registry_register_and_get() {
         let mut reg = AgentRegistry::new();
-        reg.register(Box::new(CharacterAgent));
+        reg.register(Arc::new(CharacterAgent));
 
         let agent = reg.get(AgentId::Character).unwrap();
         assert_eq!(agent.id(), AgentId::Character);
@@ -516,9 +517,9 @@ mod tests {
     #[test]
     fn test_registry_list_all() {
         let mut reg = AgentRegistry::new();
-        reg.register(Box::new(CharacterAgent));
-        reg.register(Box::new(WorldAgent));
-        reg.register(Box::new(NarrativeAgent));
+        reg.register(Arc::new(CharacterAgent));
+        reg.register(Arc::new(WorldAgent));
+        reg.register(Arc::new(NarrativeAgent));
 
         let ids = reg.list_all();
         assert_eq!(ids.len(), 3);
