@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Editor, StatusBar, AnalysisPanel } from "./components";
-import { listProjects, listChapters, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
+import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
 import type { AgentState, AgentAnnotation } from "./types";
@@ -26,6 +26,7 @@ function App() {
   const [topology, setTopology] = useState<string>();
   const [complexity, setComplexity] = useState<string>();
   const [totalCost, setTotalCost] = useState(0);
+  const [analyzing, setAnalyzing] = useState(false);
 
   // ── 加载项目列表 ──
   useEffect(() => {
@@ -93,9 +94,89 @@ function App() {
     setAgentStates([]);
   }, []);
 
+  // ── 新建项目 ──
+  const handleNewProject = useCallback(async () => {
+    const name = prompt("项目名称：");
+    if (!name?.trim()) return;
+    try {
+      const p = await createProject(name.trim());
+      setProjects((prev) => [...prev, p]);
+      setSelectedProject(p.id);
+    } catch (e) {
+      alert(`创建项目失败: ${e}`);
+    }
+  }, []);
+
+  // ── 新建章节 ──
+  const handleNewChapter = useCallback(async () => {
+    if (!selectedProject) return;
+    const title = prompt("章节标题：");
+    if (!title?.trim()) return;
+    try {
+      const ch = await createChapter(selectedProject, title.trim(), "");
+      setChapters((prev) => [...prev, ch]);
+      setSelectedChapter(ch);
+      setEditorContent(ch.text);
+    } catch (e) {
+      alert(`创建章节失败: ${e}`);
+    }
+  }, [selectedProject]);
+
+  // ── 删除章节 ──
+  const handleDeleteChapter = useCallback(
+    async (ch: ChapterData) => {
+      if (!confirm(`删除章节 "${ch.title}"？`)) return;
+      try {
+        await deleteChapter(ch.id);
+        setChapters((prev) => prev.filter((c) => c.id !== ch.id));
+        if (selectedChapter?.id === ch.id) {
+          setSelectedChapter(null);
+          setEditorContent("");
+          setAnnotations([]);
+          setProposals([]);
+        }
+      } catch (e) {
+        alert(`删除章节失败: ${e}`);
+      }
+    },
+    [selectedChapter]
+  );
+
+  // ── 保存 ──
+  const handleSave = useCallback(async () => {
+    if (!selectedChapter) return;
+    const updated = { ...selectedChapter, text: editorContent };
+    try {
+      await updateChapter(updated);
+      setSelectedChapter(updated);
+      setChapters((prev) =>
+        prev.map((c) =>
+          c.id === updated.id
+            ? { ...updated, word_count: editorContent.length }
+            : c
+        )
+      );
+    } catch (e) {
+      alert(`保存失败: ${e}`);
+    }
+  }, [selectedChapter, editorContent]);
+
+  // ── Ctrl+S ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleSave]);
+
   // ── 分析结果处理 ──
   const handleAnalysisResult = useCallback(
     (result: AnalysisOutput) => {
+      setAnalyzing(false);
       setTopology(result.topology);
       setComplexity(result.complexity);
 
@@ -149,6 +230,21 @@ function App() {
             </option>
           ))}
         </select>
+        <button
+          onClick={handleNewProject}
+          title="新建项目"
+          style={{
+            fontSize: 18,
+            padding: "0 6px",
+            border: "1px solid #ccc",
+            borderRadius: 4,
+            background: "#fff",
+            cursor: "pointer",
+            lineHeight: "24px",
+          }}
+        >
+          ＋
+        </button>
       </header>
 
       {/* 主区域 */}
@@ -163,8 +259,26 @@ function App() {
             padding: 8,
           }}
         >
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
-            📑 章节列表
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>📑 章节列表</span>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={handleNewChapter}
+              disabled={!selectedProject}
+              title="新建章节"
+              style={{
+                fontSize: 14,
+                padding: "0 5px",
+                border: "1px solid #ccc",
+                borderRadius: 3,
+                background: "#fff",
+                cursor: selectedProject ? "pointer" : "default",
+                lineHeight: "20px",
+                opacity: selectedProject ? 1 : 0.4,
+              }}
+            >
+              ＋
+            </button>
           </div>
           {chapters.map((ch) => (
             <div
@@ -177,11 +291,28 @@ function App() {
                 background: selectedChapter?.id === ch.id ? "#e3f2fd" : "transparent",
                 fontSize: 13,
                 marginBottom: 2,
+                display: "flex",
+                alignItems: "center",
               }}
             >
-              {ch.title}
+              <span style={{ flex: 1 }}>{ch.title}</span>
               <span style={{ color: "#999", fontSize: 11, marginLeft: 4 }}>
                 {ch.word_count} 字
+              </span>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteChapter(ch);
+                }}
+                title="删除章节"
+                style={{
+                  cursor: "pointer",
+                  color: "#999",
+                  marginLeft: 6,
+                  fontSize: 12,
+                }}
+              >
+                ✕
               </span>
             </div>
           ))}
@@ -189,6 +320,36 @@ function App() {
 
         {/* 编辑器 */}
         <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* 编辑器工具栏 */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "4px 12px",
+              borderBottom: "1px solid #e0e0e0",
+              background: "#fff",
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600 }}>
+              {selectedChapter?.title ?? "未选择章节"}
+            </span>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={handleSave}
+              disabled={!selectedChapter}
+              style={{
+                padding: "4px 12px",
+                fontSize: 12,
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                background: "#fff",
+                cursor: selectedChapter ? "pointer" : "default",
+              }}
+            >
+              💾 保存
+            </button>
+          </div>
           <div style={{ flex: 1, overflow: "hidden" }}>
             <Editor
               content={editorContent}
