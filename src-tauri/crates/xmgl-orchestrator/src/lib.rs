@@ -222,6 +222,64 @@ fn parse_findings(
     findings
 }
 
+/// 检测 Hermes Council 中各 Agent 之间的冲突。
+///
+/// 如果两个不同 agent 指向相同文本位置（location）但给出不同 severity
+/// 或矛盾建议，生成额外的 `AgentFinding` 标记冲突。
+pub fn detect_conflicts(findings: &[AgentFinding]) -> Vec<AgentFinding> {
+    let mut conflicts = Vec::new();
+
+    for (i, a) in findings.iter().enumerate() {
+        for b in findings.iter().skip(i + 1) {
+            // 必须有位置信息才能检测冲突
+            let (loc_a, loc_b) = match (a.location, b.location) {
+                (Some(la), Some(lb)) => (la, lb),
+                _ => continue,
+            };
+            // 位置匹配（相同行范围内）
+            if loc_a.start_line != loc_b.start_line
+                || loc_a.end_line != loc_b.end_line
+            {
+                continue;
+            }
+            // 同一 agent 不跟自己冲突
+            if a.agent_id == b.agent_id {
+                continue;
+            }
+            // 严重级别不同或建议相反则标记冲突
+            if a.severity != b.severity
+                || (a.suggestion.is_some()
+                    && b.suggestion.is_some()
+                    && a.suggestion != b.suggestion)
+            {
+                conflicts.push(AgentFinding {
+                    agent_id: "HermesCouncil".into(),
+                    severity: if a.severity > b.severity {
+                        a.severity
+                    } else {
+                        b.severity
+                    },
+                    title: format!(
+                        "[CONFLICT] {} vs {}: {}",
+                        a.agent_id, b.agent_id, a.title
+                    ),
+                    description: format!(
+                        "冲突发现 — Agent {} 认为: {}\nAgent {} 认为: {}",
+                        a.agent_id, a.description, b.agent_id, b.description
+                    ),
+                    location: a.location,
+                    suggestion: Some("请人工审核并裁决此冲突。".into()),
+                    timestamp: chrono::Utc::now()
+                        .format("%Y-%m-%dT%H:%M:%SZ")
+                        .to_string(),
+                });
+            }
+        }
+    }
+
+    conflicts
+}
+
 /// 计算从行首到指定字节位置的 UTF-16 code unit 偏移（Monaco 列号）。
 fn utf16_column_from_byte(line_prefix: &str, byte_offset: usize) -> u32 {
     line_prefix[..byte_offset]
