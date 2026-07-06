@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Editor, StatusBar, AnalysisPanel } from "./components";
-import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
+import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
 import type { AgentState, AgentAnnotation } from "./types";
@@ -202,6 +202,22 @@ function App() {
     []
   );
 
+  // ── 快捷分析 ──
+  const handleQuickAnalyze = useCallback(async () => {
+    if (!selectedChapter || analyzing) return;
+    setAnalyzing(true);
+    setAnnotations([]);
+    setProposals([]);
+    setAgentStates([]);
+    try {
+      const result = await runAnalysis(selectedChapter.id, "scene_analysis");
+      handleAnalysisResult(result);
+    } catch (e) {
+      alert(`分析失败: ${e}`);
+      setAnalyzing(false);
+    }
+  }, [selectedChapter, analyzing, handleAnalysisResult]);
+
   return (
     <div className="app" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       {/* 顶栏 */}
@@ -335,6 +351,21 @@ function App() {
               {selectedChapter?.title ?? "未选择章节"}
             </span>
             <span style={{ flex: 1 }} />
+            <button
+              onClick={handleQuickAnalyze}
+              disabled={!selectedChapter || analyzing}
+              style={{
+                padding: "4px 12px",
+                fontSize: 12,
+                background: analyzing ? "#ccc" : "#4285f4",
+                color: "#fff",
+                border: "none",
+                borderRadius: 4,
+                cursor: selectedChapter && !analyzing ? "pointer" : "default",
+              }}
+            >
+              {analyzing ? "⏳ 分析中..." : "🔍 分析"}
+            </button>
             <button
               onClick={handleSave}
               disabled={!selectedChapter}
