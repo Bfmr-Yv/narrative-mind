@@ -57,5 +57,9 @@ CLAUDE.md
 # Development process (plans, tasks, design discussions)
 docs/
 
+# Debug artifacts (temp output, test dumps)
+*.txt
+!requirements.txt
+
 # Tauri generated code
 src-tauri/gen/
