@@ -35,10 +35,10 @@ if (-not (Test-Path $pythonExe)) {
 }
 
 $sidecarJob = Start-Job -Name 'nm-sidecar' -ScriptBlock {
-    param($py, $dir)
+    param($py, $dir, $logFile)
     Set-Location $dir
-    & $py main.py 2>&1 | Out-Null
-} -ArgumentList $pythonExe, "$root\src-python"
+    & $py main.py > $logFile 2>&1
+} -ArgumentList $pythonExe, "$root\src-python", "$root\sidecar.log"
 
 Write-Host '  Waiting for sidecar...' -NoNewline
 $ready = $false

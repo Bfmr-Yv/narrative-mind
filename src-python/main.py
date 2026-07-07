@@ -238,9 +238,16 @@ async def list_prompts():
 # Corpus
 # =========================================================================
 
-# 模块级单例 — 避免每次请求重复加载模型
-from corpus.retriever import Retriever
-_retriever = Retriever()
+# 延迟初始化 Retriever — 避免 Windows spawn 模式下模块级导入的竞态问题
+_retriever = None
+
+
+def _get_retriever():
+    global _retriever
+    if _retriever is None:
+        from corpus.retriever import Retriever
+        _retriever = Retriever()
+    return _retriever
 
 class CorpusSearchRequest(BaseModel):
     query_text: str
@@ -251,7 +258,8 @@ class CorpusSearchRequest(BaseModel):
 @app.post("/v1/corpus/search")
 async def corpus_search(req: CorpusSearchRequest):
     """语料向量检索"""
-    results = _retriever.search(req.query_text, top_k=req.top_k)
+    retriever = _get_retriever()
+    results = retriever.search(req.query_text, top_k=req.top_k)
     return {
         "results": [
             {
@@ -272,4 +280,4 @@ async def corpus_search(req: CorpusSearchRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=9091, log_level="info", workers=2)
+    uvicorn.run(app, host="127.0.0.1", port=9091, log_level="info")

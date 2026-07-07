@@ -158,7 +158,7 @@ impl ProjectManager {
     /// 更新章节。
     ///
     /// 自动更新 `updated_at` 时间戳并重新计算 `word_count`。
-    pub fn update_chapter(&self, chapter: &ChapterData) -> CoreResult<()> {
+    pub fn update_chapter(&self, chapter: &ChapterData) -> CoreResult<ChapterData> {
         let conn = self.open()?;
 
         let mut updated = chapter.clone();
@@ -170,7 +170,7 @@ impl ProjectManager {
 
         self.recalc_project_stats(&chapter.project_id)?;
 
-        Ok(())
+        Ok(updated)
     }
 
     /// 删除章节。

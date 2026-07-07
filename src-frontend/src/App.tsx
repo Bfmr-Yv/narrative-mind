@@ -147,15 +147,9 @@ function App() {
     if (!selectedChapter) return;
     const updated = { ...selectedChapter, text: editorContent };
     try {
-      await updateChapter(updated);
-      setSelectedChapter(updated);
-      setChapters((prev) =>
-        prev.map((c) =>
-          c.id === updated.id
-            ? { ...updated, word_count: editorContent.length }
-            : c
-        )
-      );
+      const saved = await updateChapter(updated);
+      setSelectedChapter(saved);
+      setChapters((prev) => prev.map((c) => c.id === saved.id ? saved : c));
     } catch (e) {
       alert(`保存失败: ${e}`);
     }
@@ -214,6 +208,7 @@ function App() {
       handleAnalysisResult(result);
     } catch (e) {
       alert(`分析失败: ${e}`);
+    } finally {
       setAnalyzing(false);
     }
   }, [selectedChapter, analyzing, handleAnalysisResult]);

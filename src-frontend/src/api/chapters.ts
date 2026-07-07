@@ -27,9 +27,9 @@ export async function getChapter(id: string): Promise<ChapterData | null> {
   return invoke<ChapterData | null>("get_chapter", { id });
 }
 
-/** 更新章节（自动刷新 updated_at、重新计算 word_count）。 */
-export async function updateChapter(chapter: ChapterData): Promise<void> {
-  return invoke<void>("update_chapter", { chapter });
+/** 更新章节（自动刷新 updated_at、重新计算 word_count，返回更新后的数据）。 */
+export async function updateChapter(chapter: ChapterData): Promise<ChapterData> {
+  return invoke<ChapterData>("update_chapter", { chapter });
 }
 
 /** 删除章节。 */

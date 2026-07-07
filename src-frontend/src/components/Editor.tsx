@@ -92,6 +92,7 @@ export function Editor({
         scrollBeyondLastLine: false,
         padding: { top: 16, bottom: 16 },
         glyphMargin: true, // ← Phase H: 启用 glyph margin
+        folding: false,
         readOnly,
       });
 
@@ -338,6 +339,7 @@ export function Editor({
           readOnly,
           wordWrap: "on",
           glyphMargin: true,
+          folding: false,
         }}
       />
 

@@ -65,7 +65,7 @@ pub fn get_chapter(state: State<'_, AppState>, id: String) -> Result<Option<Chap
 pub fn update_chapter(
     state: State<'_, AppState>,
     chapter: ChapterData,
-) -> Result<(), String> {
+) -> Result<ChapterData, String> {
     state
         .project_manager
         .update_chapter(&chapter)
