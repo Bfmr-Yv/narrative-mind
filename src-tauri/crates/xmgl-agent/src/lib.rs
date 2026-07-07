@@ -237,7 +237,7 @@ macro_rules! agent_impl {
             ) -> CoreResult<(String, Option<LLMUsage>)> {
                 let vars = self.build_variables(ctx);
                 let response = llm
-                    .call_agent(task_type.as_str(), &vars, task_type)
+                    .call_agent(self.prompt_key(), &vars, task_type)
                     .await?;
                 if response.success {
                     let output = response
