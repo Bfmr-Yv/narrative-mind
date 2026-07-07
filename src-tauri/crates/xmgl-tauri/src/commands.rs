@@ -3,6 +3,7 @@
 //! 所有 #[tauri::command] 集中在此模块，避免 proc-macro 命名冲突。
 
 use crate::{AppState, TauriAnalysisObserver};
+use std::sync::Arc;
 use tauri::State;
 use xmgl_core::{AgentFinding, ChapterData, ProjectMeta, TaskType};
 use xmgl_agent::SharedContext;
@@ -77,11 +78,12 @@ pub fn delete_chapter(state: State<'_, AppState>, id: String) -> Result<(), Stri
     state.project_manager.delete_chapter(&id).map_err(|e| e.to_string())
 }
 
-// ── Python Bridge ──
+// ── Health ──
 
 #[tauri::command]
 pub async fn health_check(state: State<'_, AppState>) -> Result<(bool, bool, String), String> {
-    state.python_bridge.health_check().await.map_err(|e| e.to_string())
+    let configured = state.llm_client.is_configured();
+    Ok((true, configured, "llm_client".into()))
 }
 
 // ── 分析 ──
@@ -157,7 +159,7 @@ pub async fn run_analysis(
             &request,
             &mut ctx,
             &state.agent_registry,
-            &state.python_bridge,
+            Arc::clone(&state.llm_client),
             Some(&observer),
         )
         .await

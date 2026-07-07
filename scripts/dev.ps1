@@ -10,8 +10,8 @@ Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ''
 
 # --- 0. Cleanup leftover ports from previous runs ---
-Write-Host '[0/3] Cleaning up leftover ports...' -ForegroundColor DarkGray
-foreach ($port in @(9091, 1420)) {
+Write-Host '[0/2] Cleaning up leftover ports...' -ForegroundColor DarkGray
+foreach ($port in @(1420)) {
     $pids = (Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
     foreach ($pid in $pids) {
         try {
@@ -20,49 +20,12 @@ foreach ($port in @(9091, 1420)) {
         } catch { }
     }
 }
-# Also clean up any leftover PowerShell background jobs from previous sessions
-Get-Job -Name 'nm-sidecar','nm-vite' -ErrorAction SilentlyContinue | Remove-Job -Force -ErrorAction SilentlyContinue
+# Clean up leftover Vite job from previous sessions
+Get-Job -Name 'nm-vite' -ErrorAction SilentlyContinue | Remove-Job -Force -ErrorAction SilentlyContinue
 Write-Host ''
 
-# --- 1. Python Sidecar ---
-Write-Host '[1/3] Starting Python Sidecar (localhost:9091)...' -ForegroundColor Yellow
-
-$pythonExe = "$root\src-python\.venv\Scripts\python.exe"
-if (-not (Test-Path $pythonExe)) {
-    Write-Host 'ERROR: venv not found.' -ForegroundColor Red
-    Write-Host 'Run: cd src-python ; python -m venv .venv ; .venv\Scripts\pip install -r requirements.txt' -ForegroundColor Red
-    exit 1
-}
-
-$sidecarJob = Start-Job -Name 'nm-sidecar' -ScriptBlock {
-    param($py, $dir, $logFile)
-    Set-Location $dir
-    & $py main.py > $logFile 2>&1
-} -ArgumentList $pythonExe, "$root\src-python", "$root\sidecar.log"
-
-Write-Host '  Waiting for sidecar...' -NoNewline
-$ready = $false
-for ($i = 0; $i -lt 30; $i++) {
-    try {
-        $resp = Invoke-WebRequest -Uri 'http://127.0.0.1:9091/v1/llm/health' -TimeoutSec 1 -UseBasicParsing -ErrorAction SilentlyContinue
-        if ($resp.StatusCode -eq 200) {
-            $ready = $true
-            break
-        }
-    } catch { }
-    Write-Host '.' -NoNewline
-    Start-Sleep -Seconds 1
-}
-Write-Host ''
-
-if ($ready) {
-    Write-Host '  Sidecar is ready!' -ForegroundColor Green
-} else {
-    Write-Host '  WARNING: Sidecar not ready. Analysis may not work.' -ForegroundColor DarkYellow
-}
-
-# --- 2. Frontend (Vite dev server) ---
-Write-Host '[2/3] Starting Vite dev server (localhost:1420)...' -ForegroundColor Yellow
+# --- 1. Frontend (Vite dev server) ---
+Write-Host '[1/2] Starting Vite dev server (localhost:1420)...' -ForegroundColor Yellow
 
 $viteDir = "$root\src-frontend"
 if (-not (Test-Path "$viteDir\node_modules")) {
@@ -96,20 +59,20 @@ if ($viteReady) {
     Write-Host '  Vite is ready!' -ForegroundColor Green
 } else {
     Write-Host '  ERROR: Vite failed to start.' -ForegroundColor Red
-    Stop-Job -Name 'nm-sidecar' -ErrorAction SilentlyContinue
     exit 1
 }
 
-# --- 3. Tauri Dev ---
-Write-Host '[3/3] Launching Tauri desktop app...' -ForegroundColor Yellow
+# --- 2. Tauri Dev ---
+Write-Host '[2/2] Launching Tauri desktop app...' -ForegroundColor Yellow
 Write-Host '  App window will open. Close this terminal to stop all services.' -ForegroundColor DarkGray
+Write-Host '  LLM: Set LLM_API_KEY env var before launch for analysis.' -ForegroundColor DarkGray
 Write-Host ''
 
 Set-Location "$root"
 $tauriExe = "$viteDir\node_modules\.bin\tauri.cmd"
 if (-not (Test-Path $tauriExe)) {
     Write-Host 'ERROR: tauri CLI not found. Run: cd src-frontend ; npm install' -ForegroundColor Red
-    Stop-Job -Name 'nm-sidecar','nm-vite' -ErrorAction SilentlyContinue
+    Stop-Job -Name 'nm-vite' -ErrorAction SilentlyContinue
     exit 1
 }
 
@@ -118,7 +81,7 @@ try {
 } finally {
     Write-Host ''
     Write-Host 'Cleaning up background services...' -ForegroundColor Yellow
-    Stop-Job -Name 'nm-sidecar','nm-vite' -ErrorAction SilentlyContinue
-    Remove-Job -Name 'nm-sidecar','nm-vite' -Force -ErrorAction SilentlyContinue
+    Stop-Job -Name 'nm-vite' -ErrorAction SilentlyContinue
+    Remove-Job -Name 'nm-vite' -Force -ErrorAction SilentlyContinue
     Write-Host 'Stopped. Bye!' -ForegroundColor Cyan
 }

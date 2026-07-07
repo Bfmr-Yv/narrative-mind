@@ -3,7 +3,9 @@
 //! 所有 crate 依赖的基础类型（serde + thiserror）。
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::str::FromStr;
+use async_trait::async_trait;
 use thiserror::Error;
 
 // =========================================================================
@@ -318,6 +320,60 @@ pub enum CoreError {
 
 /// `Result` alias，以 CoreError 为默认错误类型。
 pub type CoreResult<T> = Result<T, CoreError>;
+
+// =========================================================================
+// LLM 调用类型（从 xmgl-python-bridge 迁移至 xmgl-core，Phase K）
+// =========================================================================
+
+/// LLM 调用用量统计。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LLMUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub cost_usd: f64,
+    pub model: String,
+    pub latency_ms: u32,
+}
+
+/// LLM 调用响应。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LLMCallResponse {
+    pub request_id: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<LLMUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =========================================================================
+// LlmClient trait
+// =========================================================================
+
+/// LLM 客户端抽象 — 替代 Python sidecar。
+///
+/// 实现此 trait 的类型负责:
+/// 1. 通过 prompt_key 查找 System Prompt 模板
+/// 2. 用 variables 渲染 user_message
+/// 3. 根据 TaskType 选择 tier 参数（max_tokens, temperature）
+/// 4. 调用 LLM API 并返回结构化结果
+#[async_trait]
+pub trait LlmClient: Send + Sync {
+    /// 调用 LLM Agent，返回结构化响应。
+    async fn call_agent(
+        &self,
+        prompt_key: &str,
+        variables: &HashMap<String, String>,
+        task_type: TaskType,
+    ) -> CoreResult<LLMCallResponse>;
+
+    /// 是否已配置 API Key（LLM 可用）。
+    fn is_configured(&self) -> bool {
+        true
+    }
+}
 
 // =========================================================================
 // Tests

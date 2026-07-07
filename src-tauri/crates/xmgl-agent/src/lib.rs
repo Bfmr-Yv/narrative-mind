@@ -7,8 +7,7 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
-use xmgl_python_bridge::{PythonBridge, LLMUsage};
-use xmgl_core::{AgentId, CoreResult, ModelTier, TaskType};
+use xmgl_core::{AgentId, CoreResult, LLMUsage, LlmClient, ModelTier, TaskType};
 
 // =========================================================================
 // SharedContext — Agent 间共享上下文
@@ -97,11 +96,11 @@ pub trait Agent: Send + Sync {
     /// 执行分析。
     ///
     /// `ctx` 包含当前项目/章节信息及前序 Agent 产出。
-    /// `bridge` 为 Python sidecar HTTP 客户端，用于调用 LLM。
+    /// `llm` 为 LLM 客户端（实现 `LlmClient` trait）。
     /// `task_type` 动态选择 prompt key。
     /// 返回分析结果文本和可选的 LLM 用量统计。
     async fn analyze(
-        &self, ctx: &SharedContext, bridge: &PythonBridge, task_type: TaskType,
+        &self, ctx: &SharedContext, llm: Arc<dyn LlmClient>, task_type: TaskType,
     ) -> CoreResult<(String, Option<LLMUsage>)>;
 
     /// Agent 使用的 prompt key（对应 Python 注册表）。
@@ -233,12 +232,12 @@ macro_rules! agent_impl {
             async fn analyze(
                 &self,
                 ctx: &SharedContext,
-                bridge: &PythonBridge,
+                llm: Arc<dyn LlmClient>,
                 task_type: TaskType,
             ) -> CoreResult<(String, Option<LLMUsage>)> {
                 let vars = self.build_variables(ctx);
-                let response = bridge
-                    .call_agent(task_type.as_str(), &vars, task_type.as_str())
+                let response = llm
+                    .call_agent(task_type.as_str(), &vars, task_type)
                     .await?;
                 if response.success {
                     let output = response

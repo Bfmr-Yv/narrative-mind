@@ -1,11 +1,28 @@
 //! xmgl-orchestrator 集成测试
 //!
-//! 需要运行 Python sidecar + LLM_API_KEY 配置。
+//! 需要 LLM_API_KEY 配置才能运行 Hermes Council 测试。
+
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use xmgl_agent::{AgentRegistry, SharedContext};
-use xmgl_core::TaskType;
+use xmgl_core::{CoreError, CoreResult, LLMCallResponse, LlmClient, TaskType};
 use xmgl_orchestrator::{AnalysisRequest, AnalysisTrigger, Orchestrator};
-use xmgl_python_bridge::PythonBridge;
+
+/// Mock LLM client that always fails — used for no-LLM pipeline tests.
+struct FailingMockLlmClient;
+
+#[async_trait::async_trait]
+impl LlmClient for FailingMockLlmClient {
+    async fn call_agent(
+        &self,
+        _prompt_key: &str,
+        _variables: &HashMap<String, String>,
+        _task_type: TaskType,
+    ) -> CoreResult<LLMCallResponse> {
+        Err(CoreError::Internal("mock failure".into()))
+    }
+}
 
 /// 完整分析管线（不含 LLM）— 验证拓扑选择 + 发现解析
 #[tokio::test]
@@ -14,8 +31,7 @@ async fn test_full_analysis_pipeline_no_llm() {
     orch.max_upgrade_rounds = 0; // 禁用升级避免超时
 
     let registry = AgentRegistry::with_all_agents();
-    // 使用无效端口 → agent 全部失败但不 panic
-    let bridge = PythonBridge::new(Some("http://127.0.0.1:1")).unwrap();
+    let llm = Arc::new(FailingMockLlmClient) as Arc<dyn LlmClient>;
     let mut ctx = SharedContext::new("test-project", "测试章节文本内容。\n第二行。");
 
     let request = AnalysisRequest {
@@ -27,7 +43,7 @@ async fn test_full_analysis_pipeline_no_llm() {
     };
 
     let result = orch
-        .run_analysis(&request, &mut ctx, &registry, &bridge, None)
+        .run_analysis(&request, &mut ctx, &registry, llm, None)
         .await;
 
     match result {
@@ -35,18 +51,26 @@ async fn test_full_analysis_pipeline_no_llm() {
             assert!(!ar.agent_outputs.is_empty(), "即使失败也应有输出");
         }
         Err(_) => {
-            // bridge 错误可接受
+            // LLM 客户端错误可接受
         }
     }
 }
 
 /// HermesCouncil 拓扑 + 冲突裁决 → 产生 [RULING] finding
 #[tokio::test]
-#[ignore = "需要运行 Python sidecar + LLM_API_KEY"]
+#[ignore = "需要 LLM_API_KEY 配置"]
 async fn test_hermes_council_ruling() {
+    // 此测试需要真实 LLM 客户端。Phase K 后从环境变量读取配置。
+    // 使用 xmgl_llm::LlmClientImpl 替代 Python sidecar。
     let orch = Orchestrator::new();
     let registry = AgentRegistry::with_all_agents();
-    let bridge = PythonBridge::new(Some("http://127.0.0.1:9091")).unwrap();
+    // Phase K: 使用 Rust 原生 LLM 客户端
+    let llm_result = xmgl_llm::LlmClientImpl::new();
+    if llm_result.is_err() || !llm_result.as_ref().unwrap().is_configured() {
+        eprintln!("跳过: LLM 未配置");
+        return;
+    }
+    let llm = Arc::new(llm_result.unwrap()) as Arc<dyn LlmClient>;
     let mut ctx = SharedContext::new(
         "test-project",
         "第一章\n\n清晨的阳光透过窗棂洒进房间。李明从床上坐起来，揉了揉惺忪的睡眼。他看了看床头的闹钟——已经七点半了。\n\n\"糟了！\"他急忙跳下床，今天是开学第一天。",
@@ -61,7 +85,7 @@ async fn test_hermes_council_ruling() {
     };
 
     let result = orch
-        .run_analysis(&request, &mut ctx, &registry, &bridge, None)
+        .run_analysis(&request, &mut ctx, &registry, llm, None)
         .await;
 
     match result {

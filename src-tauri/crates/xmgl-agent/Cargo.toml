@@ -6,6 +6,5 @@ license.workspace = true
 
 [dependencies]
 xmgl-core = { path = "../xmgl-core" }
-xmgl-python-bridge = { path = "../xmgl-python-bridge" }
 async-trait.workspace = true
 tokio.workspace = true

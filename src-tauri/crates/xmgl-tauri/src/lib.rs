@@ -7,11 +7,12 @@
 pub mod commands;
 
 use tauri::Emitter;
+use std::sync::Arc;
 use xmgl_agent::AgentRegistry;
-use xmgl_core::TextRange;
+use xmgl_core::{LlmClient, TextRange};
+use xmgl_llm::LlmClientImpl;
 use xmgl_orchestrator::{AnalysisObserver, Orchestrator};
 use xmgl_project::ProjectManager;
-use xmgl_python_bridge::PythonBridge;
 
 // =========================================================================
 // AppState
@@ -19,14 +20,11 @@ use xmgl_python_bridge::PythonBridge;
 
 /// Tauri 应用全局状态。
 ///
-/// PythonBridge 包裹在 tokio::sync::Mutex 中（非 std::sync::Mutex），
-/// 因为 health_check 等 async command 需要持锁跨越 .await 点，
-/// std::sync::MutexGuard 不是 Send，会导致编译错误。
-///
+/// LlmClient 通过 `Arc<dyn LlmClient>` 共享，支持并发分析。
 /// ProjectManager 本身是 Sync + Clone（仅存 db_path），无需锁。
 pub struct AppState {
     pub project_manager: ProjectManager,
-    pub python_bridge: PythonBridge,
+    pub llm_client: Arc<dyn LlmClient>,
     pub agent_registry: AgentRegistry,
     pub orchestrator: Orchestrator,
 }
@@ -34,15 +32,16 @@ pub struct AppState {
 impl AppState {
     /// 创建 AppState。
     ///
-    /// `db_path` 为 SQLite 数据库路径，
-    /// `sidecar_url` 为 Python sidecar 地址（`None` 默认 `http://localhost:9091`）。
-    pub fn new(db_path: &str, sidecar_url: Option<&str>) -> Result<Self, String> {
+    /// `db_path` 为 SQLite 数据库路径。
+    /// LLM 配置从环境变量读取（LLM_API_KEY, LLM_BASE_URL, LLM_MODEL 等）。
+    pub fn new(db_path: &str) -> Result<Self, String> {
         let project_manager = ProjectManager::new(db_path).map_err(|e| e.to_string())?;
-        let python_bridge = PythonBridge::new(sidecar_url).map_err(|e| e.to_string())?;
+        let llm_client = Arc::new(LlmClientImpl::new().map_err(|e| e.to_string())?)
+            as Arc<dyn LlmClient>;
 
         Ok(Self {
             project_manager,
-            python_bridge,
+            llm_client,
             agent_registry: AgentRegistry::with_all_agents(),
             orchestrator: Orchestrator::new(),
         })
@@ -224,17 +223,16 @@ mod tests {
     #[test]
     fn test_app_state_new() {
         let db_path = format!("test_tauri_{}.db", uuid::Uuid::new_v4());
-        let state = AppState::new(&db_path, None).expect("create AppState");
+        let state = AppState::new(&db_path).expect("create AppState");
         assert!(state.project_manager.db_path().ends_with(".db"));
+        assert!(state.agent_registry.len() > 0);
         let _ = std::fs::remove_file(&db_path);
     }
 
     #[test]
-    fn test_app_state_new_with_sidecar_url() {
+    fn test_app_state_new_default() {
         let db_path = format!("test_tauri2_{}.db", uuid::Uuid::new_v4());
-        let state =
-            AppState::new(&db_path, Some("http://127.0.0.1:9091")).expect("create AppState");
-        assert_eq!(state.python_bridge.consecutive_failures(), 0);
+        let state = AppState::new(&db_path).expect("create AppState");
         let _ = std::fs::remove_file(&db_path);
     }
 

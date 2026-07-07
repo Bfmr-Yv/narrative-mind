@@ -7,7 +7,6 @@ license.workspace = true
 [dependencies]
 xmgl-core = { path = "../xmgl-core" }
 xmgl-agent = { path = "../xmgl-agent" }
-xmgl-python-bridge = { path = "../xmgl-python-bridge" }
 tokio.workspace = true
 async-trait.workspace = true
 serde_json.workspace = true
@@ -15,3 +14,4 @@ chrono.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+xmgl-llm = { path = "../xmgl-llm" }

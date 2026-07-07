@@ -15,7 +15,7 @@ members = [
     "crates/xmgl-orchestrator",
     "crates/xmgl-memory",
     "crates/xmgl-project",
-    "crates/xmgl-python-bridge",
+    "crates/xmgl-llm",
     "crates/xmgl-tauri",
 ]
 

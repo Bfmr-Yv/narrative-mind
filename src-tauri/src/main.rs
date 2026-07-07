@@ -9,7 +9,7 @@
 use xmgl_tauri::{commands, AppState};
 
 fn main() {
-    let app_state = AppState::new("xmgl.db", None).expect("应用初始化失败");
+    let app_state = AppState::new("xmgl.db").expect("应用初始化失败");
 
     tauri::Builder::default()
         .manage(app_state)

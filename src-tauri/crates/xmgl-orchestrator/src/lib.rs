@@ -4,9 +4,8 @@
 //! Phase C: 填充复杂度预判、拓扑选择、Hermes Council 协议实现。
 
 use std::sync::Arc;
-use xmgl_core::{AgentFinding, AgentId, CoreResult, Severity, TaskComplexity, TaskType, TextRange};
+use xmgl_core::{AgentFinding, AgentId, CoreError, CoreResult, LLMCallResponse, LLMUsage, LlmClient, Severity, TaskComplexity, TaskType, TextRange};
 use xmgl_agent::{AgentRegistry, SharedContext};
-use xmgl_python_bridge::{LLMUsage, PythonBridge};
 
 // =========================================================================
 // Agent 拓扑
@@ -365,7 +364,7 @@ async fn run_serial(
     agent_ids: &[AgentId],
     ctx: &mut SharedContext,
     registry: &AgentRegistry,
-    bridge: &PythonBridge,
+    llm: Arc<dyn LlmClient>,
     task_type: TaskType,
     observer: Option<&dyn AnalysisObserver>,
 ) -> (Vec<(AgentId, String)>, Vec<(AgentId, LLMUsage)>, u32) {
@@ -385,7 +384,7 @@ async fn run_serial(
                     );
                 }
 
-                match agent.analyze(ctx, bridge, task_type).await {
+                match agent.analyze(ctx, Arc::clone(&llm), task_type).await {
                     Ok((output, usage_opt)) => {
                         ctx.record_output(*agent_id, output.clone());
                         outputs.push((*agent_id, output));
@@ -419,7 +418,7 @@ async fn run_parallel(
     agent_ids: &[AgentId],
     ctx: &SharedContext,
     registry: &AgentRegistry,
-    bridge: &PythonBridge,
+    llm: Arc<dyn LlmClient>,
     task_type: TaskType,
     observer: Option<&dyn AnalysisObserver>,
 ) -> (Vec<(AgentId, String)>, Vec<(AgentId, LLMUsage)>, u32) {
@@ -445,12 +444,12 @@ async fn run_parallel(
                 continue;
             }
             let agent = Arc::clone(&agent);
-            let bridge = bridge.clone();
+            let llm = Arc::clone(&llm);
             let ctx = ctx.clone();
             let done_pct = ((idx + 1) as f64 / total) * 100.0;
 
             handles.push(tokio::spawn(async move {
-                let result = agent.analyze(&ctx, &bridge, task_type).await;
+                let result = agent.analyze(&ctx, llm, task_type).await;
                 (agent_id, agent.name().to_string(), done_pct, result)
             }));
         }
@@ -757,7 +756,7 @@ impl Orchestrator {
         request: &AnalysisRequest,
         ctx: &mut SharedContext,
         registry: &AgentRegistry,
-        bridge: &PythonBridge,
+        llm: Arc<dyn LlmClient>,
         observer: Option<&dyn AnalysisObserver>,
     ) -> CoreResult<AnalysisResult> {
         let text_length = ctx.chapter_text.len();
@@ -769,14 +768,14 @@ impl Orchestrator {
             // ── 按拓扑分派执行 ──
             let (outputs, usages, success_count) = match &topology {
                 AgentTopology::Single(id) => {
-                    run_serial(&[*id], ctx, registry, bridge, request.task_type, observer).await
+                    run_serial(&[*id], ctx, registry, Arc::clone(&llm), request.task_type, observer).await
                 }
                 AgentTopology::Serial { agents } => {
-                    run_serial(agents, ctx, registry, bridge, request.task_type, observer).await
+                    run_serial(agents, ctx, registry, Arc::clone(&llm), request.task_type, observer).await
                 }
                 AgentTopology::Parallel { agents } => {
                     let (outputs, usages, success_count) = run_parallel(
-                        agents, ctx, registry, bridge, request.task_type, observer,
+                        agents, ctx, registry, Arc::clone(&llm), request.task_type, observer,
                     )
                     .await;
                     // 回写 ctx（升级轮次需要前序产出）
@@ -788,7 +787,7 @@ impl Orchestrator {
                 AgentTopology::HermesCouncil { analysts, chair } => {
                     // Phase 1: 并行分析 → Phase 2: Chair 串行综合
                     let (mut outputs, mut usages, success) = run_parallel(
-                        analysts, ctx, registry, bridge, request.task_type, observer,
+                        analysts, ctx, registry, Arc::clone(&llm), request.task_type, observer,
                     )
                     .await;
                     // 记录 analyst 产出到 ctx
@@ -797,7 +796,7 @@ impl Orchestrator {
                     }
                     // Chair 综合
                     let (chair_outputs, chair_usages, chair_success) = run_serial(
-                        &[*chair], ctx, registry, bridge, request.task_type, observer,
+                        &[*chair], ctx, registry, Arc::clone(&llm), request.task_type, observer,
                     )
                     .await;
                     outputs.extend(chair_outputs);
@@ -948,6 +947,22 @@ impl Default for Orchestrator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    // Phase K: FailingMockLlmClient 替代 PythonBridge 用于无 sidecar 环境测试。
+    struct FailingMockLlmClient;
+
+    #[async_trait::async_trait]
+    impl LlmClient for FailingMockLlmClient {
+        async fn call_agent(
+            &self,
+            _prompt_key: &str,
+            _variables: &HashMap<String, String>,
+            _task_type: TaskType,
+        ) -> CoreResult<LLMCallResponse> {
+            Err(CoreError::Internal("mock failure".into()))
+        }
+    }
 
     #[test]
     fn test_topology_agent_ids() {
@@ -1256,11 +1271,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_analysis_no_upgrade_rounds() {
-        // 禁用升级以避免连接不可达端口的超时
+        // 禁用升级以避免多次重试
         let mut orch = Orchestrator::new();
         orch.max_upgrade_rounds = 0;
         let registry = AgentRegistry::with_all_agents();
-        let bridge = PythonBridge::new(Some("http://127.0.0.1:1")).unwrap();
+        let llm = Arc::new(FailingMockLlmClient) as Arc<dyn LlmClient>;
         let mut ctx = SharedContext::new("p1", "测试文本");
 
         let request = AnalysisRequest {
@@ -1271,7 +1286,7 @@ mod tests {
             context_note: None,
         };
 
-        let result = orch.run_analysis(&request, &mut ctx, &registry, &bridge, None).await;
+        let result = orch.run_analysis(&request, &mut ctx, &registry, llm, None).await;
         match result {
             Ok(ar) => {
                 // 无升级 → Moderate → Serial(3) → 全部失败但直接返回
@@ -1281,7 +1296,7 @@ mod tests {
                 }
             }
             Err(_) => {
-                // bridge 级别错误也是可接受的
+                // LLM 客户端级别错误也是可接受的
             }
         }
     }
