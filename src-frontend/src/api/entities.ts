@@ -84,3 +84,17 @@ export async function deleteForeshadow(id: string): Promise<void> {
 export async function listTimeline(projectId: string): Promise<TimelineEvent[]> {
   return invoke<TimelineEvent[]>("list_timeline", { projectId });
 }
+
+// ── 项目设置 ──
+
+export async function listProjectSettings(projectId: string): Promise<[string, string][]> {
+  return invoke<[string, string][]>("list_project_settings", { projectId });
+}
+
+export async function setProjectSetting(projectId: string, key: string, value: string): Promise<void> {
+  return invoke<void>("set_project_setting", { projectId, key, value });
+}
+
+export async function deleteProjectSetting(projectId: string, key: string): Promise<void> {
+  return invoke<void>("delete_project_setting", { projectId, key });
+}

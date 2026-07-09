@@ -360,6 +360,38 @@ pub fn delete_foreshadow(
     xmgl_memory::delete_foreshadow(&conn, &id).map_err(|e| e.to_string())
 }
 
+// ── 项目设置 ──
+
+#[tauri::command]
+pub fn list_project_settings(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<(String, String)>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::list_project_settings(&conn, &project_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_project_setting(
+    state: State<'_, AppState>,
+    project_id: String,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::set_project_setting(&conn, &project_id, &key, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_project_setting(
+    state: State<'_, AppState>,
+    project_id: String,
+    key: String,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::delete_project_setting(&conn, &project_id, &key).map_err(|e| e.to_string())
+}
+
 // ── 时间线（只读） ──
 
 #[tauri::command]

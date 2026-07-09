@@ -1,7 +1,11 @@
 import { create } from "zustand";
-import type { ProjectMeta, ChapterData, AgentId } from "../types";
+import type {
+  ProjectMeta, ChapterData, AgentId, Character, Location,
+  ForeshadowEntry, TimelineEvent,
+} from "../types";
 import type { AnalysisOutput } from "../api";
 import * as api from "../api";
+import * as entitiesApi from "../api/entities";
 
 /**
  * Zustand 全局状态 — Narrative Mind v4.0
@@ -84,6 +88,34 @@ export interface AppState {
   setAnalyzing: (v: boolean) => void;
   /** 清除分析结果 */
   clearAnalysisResult: () => void;
+
+  // ── Phase L2: 实体 & 创作库 ──
+  characters: Character[];
+  locations: Location[];
+  foreshadows: ForeshadowEntry[];
+  timeline: TimelineEvent[];
+  settings: [string, string][];  // project_settings key-value pairs
+  selectedEntity: { type: "character" | "location" | "foreshadow" | "setting"; id: string } | null;
+  editingEntity: boolean;
+  loadCharacters: () => Promise<void>;
+  loadLocations: () => Promise<void>;
+  loadForeshadows: () => Promise<void>;
+  loadTimeline: () => Promise<void>;
+  loadSettings: () => Promise<void>;
+  createCharacter: (c: Character) => Promise<void>;
+  updateCharacter: (c: Character) => Promise<void>;
+  deleteCharacter: (id: string) => Promise<void>;
+  createLocation: (l: Location) => Promise<void>;
+  updateLocation: (l: Location) => Promise<void>;
+  deleteLocation: (id: string) => Promise<void>;
+  createForeshadow: (f: ForeshadowEntry) => Promise<void>;
+  updateForeshadow: (f: ForeshadowEntry) => Promise<void>;
+  deleteForeshadow: (id: string) => Promise<void>;
+  setProjectSetting: (key: string, value: string) => Promise<void>;
+  deleteProjectSetting: (key: string) => Promise<void>;
+  selectEntity: (type: "character" | "location" | "foreshadow" | "setting", id: string) => void;
+  setEditing: (editing: boolean) => void;
+  clearSelection: () => void;
 }
 
 // =========================================================================
@@ -195,6 +227,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       isBusy: false,
       lastResult: null,
     },
+    {
+      id: "EntityExtract",
+      name: "实体提取 Agent",
+      isBusy: false,
+      lastResult: null,
+    },
   ],
 
   updateAgentStatus: (id, isBusy) =>
@@ -211,4 +249,126 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAnalyzing: (v) => set({ analyzing: v }),
 
   clearAnalysisResult: () => set({ analysisResult: null }),
+
+  // ── 实体初始值 ──
+  characters: [],
+  locations: [],
+  foreshadows: [],
+  timeline: [],
+  settings: [],
+  selectedEntity: null,
+  editingEntity: false,
+
+  loadCharacters: async () => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    const characters = await entitiesApi.listCharacters(currentProject.id);
+    set({ characters });
+  },
+
+  loadLocations: async () => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    const locations = await entitiesApi.listLocations(currentProject.id);
+    set({ locations });
+  },
+
+  loadForeshadows: async () => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    const foreshadows = await entitiesApi.listForeshadows(currentProject.id);
+    set({ foreshadows });
+  },
+
+  loadTimeline: async () => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    const timeline = await entitiesApi.listTimeline(currentProject.id);
+    set({ timeline });
+  },
+
+  loadSettings: async () => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    try {
+      const settings = await entitiesApi.listProjectSettings(currentProject.id);
+      set({ settings });
+    } catch {
+      set({ settings: [] });
+    }
+  },
+
+  createCharacter: async (c: Character) => {
+    await entitiesApi.createCharacter(c);
+    await get().loadCharacters();
+  },
+
+  updateCharacter: async (c: Character) => {
+    await entitiesApi.updateCharacter(c);
+    await get().loadCharacters();
+  },
+
+  deleteCharacter: async (id: string) => {
+    await entitiesApi.deleteCharacter(id);
+    set((s) => ({
+      characters: s.characters.filter((ch) => ch.id !== id),
+      selectedEntity: s.selectedEntity?.id === id ? null : s.selectedEntity,
+    }));
+  },
+
+  createLocation: async (l: Location) => {
+    await entitiesApi.createLocation(l);
+    await get().loadLocations();
+  },
+
+  updateLocation: async (l: Location) => {
+    await entitiesApi.updateLocation(l);
+    await get().loadLocations();
+  },
+
+  deleteLocation: async (id: string) => {
+    await entitiesApi.deleteLocation(id);
+    set((s) => ({
+      locations: s.locations.filter((loc) => loc.id !== id),
+      selectedEntity: s.selectedEntity?.id === id ? null : s.selectedEntity,
+    }));
+  },
+
+  createForeshadow: async (f: ForeshadowEntry) => {
+    await entitiesApi.createForeshadow(f);
+    await get().loadForeshadows();
+  },
+
+  updateForeshadow: async (f: ForeshadowEntry) => {
+    await entitiesApi.updateForeshadow(f);
+    await get().loadForeshadows();
+  },
+
+  deleteForeshadow: async (id: string) => {
+    await entitiesApi.deleteForeshadow(id);
+    set((s) => ({
+      foreshadows: s.foreshadows.filter((fs) => fs.id !== id),
+      selectedEntity: s.selectedEntity?.id === id ? null : s.selectedEntity,
+    }));
+  },
+
+  setProjectSetting: async (key: string, value: string) => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    await entitiesApi.setProjectSetting(currentProject.id, key, value);
+    await get().loadSettings();
+  },
+
+  deleteProjectSetting: async (key: string) => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    await entitiesApi.deleteProjectSetting(currentProject.id, key);
+    await get().loadSettings();
+  },
+
+  selectEntity: (type, id) => set({ selectedEntity: { type, id }, editingEntity: false }),
+
+  setEditing: (editing) => set({ editingEntity: editing }),
+
+  clearSelection: () => set({ selectedEntity: null, editingEntity: false }),
 }));

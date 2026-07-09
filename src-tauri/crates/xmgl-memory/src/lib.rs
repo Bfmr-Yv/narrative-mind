@@ -436,6 +436,47 @@ pub fn chapter_count_for_project(conn: &Connection, project_id: &str) -> CoreRes
     Ok(count)
 }
 
+// =========================================================================
+// 项目设置 CRUD
+// =========================================================================
+
+pub fn list_project_settings(conn: &Connection, project_id: &str) -> CoreResult<Vec<(String, String)>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT key, value FROM project_settings WHERE project_id = ?1 ORDER BY key ASC",
+        )
+        .map_err(map_err)?;
+    let rows = stmt
+        .query_map(params![project_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(map_err)?;
+    rows.collect::<SqlResult<Vec<_>>>().map_err(map_err)
+}
+
+pub fn set_project_setting(conn: &Connection, project_id: &str, key: &str, value: &str) -> CoreResult<()> {
+    conn.execute(
+        "INSERT INTO project_settings (project_id, key, value) VALUES (?1, ?2, ?3)
+         ON CONFLICT(project_id, key) DO UPDATE SET value = ?3",
+        params![project_id, key, value],
+    )
+    .map_err(map_err)?;
+    Ok(())
+}
+
+pub fn delete_project_setting(conn: &Connection, project_id: &str, key: &str) -> CoreResult<()> {
+    let affected = conn
+        .execute(
+            "DELETE FROM project_settings WHERE project_id = ?1 AND key = ?2",
+            params![project_id, key],
+        )
+        .map_err(map_err)?;
+    if affected == 0 {
+        return Err(CoreError::NotFound(format!("setting {key} for project {project_id}")));
+    }
+    Ok(())
+}
+
 pub fn total_words_for_project(conn: &Connection, project_id: &str) -> CoreResult<u32> {
     let total: f64 = conn
         .query_row(

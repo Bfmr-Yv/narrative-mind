@@ -42,6 +42,10 @@ fn main() {
             commands::update_foreshadow,
             commands::delete_foreshadow,
             commands::list_timeline,
+            // Phase L2: 项目设置
+            commands::list_project_settings,
+            commands::set_project_setting,
+            commands::delete_project_setting,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Tauri 应用");

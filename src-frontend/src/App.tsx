@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Editor, StatusBar, AnalysisPanel } from "./components";
+import { Editor, StatusBar, AnalysisPanel, LibraryPanel } from "./components";
 import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
@@ -325,6 +325,7 @@ function App() {
               </span>
             </div>
           ))}
+          {selectedProject && <LibraryPanel projectId={selectedProject} />}
         </nav>
 
         {/* 编辑器 */}

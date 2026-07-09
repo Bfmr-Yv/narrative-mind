@@ -50,4 +50,8 @@ export {
   updateForeshadow,
   deleteForeshadow,
   listTimeline,
+  // Phase L2: 项目设置
+  listProjectSettings,
+  setProjectSetting,
+  deleteProjectSetting,
 } from "./entities";
