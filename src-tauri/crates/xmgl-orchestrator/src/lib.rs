@@ -4,7 +4,10 @@
 //! Phase C: 填充复杂度预判、拓扑选择、Hermes Council 协议实现。
 
 use std::sync::Arc;
-use xmgl_core::{AgentFinding, AgentId, CoreResult, LLMUsage, LlmClient, Severity, TaskComplexity, TaskType, TextRange};
+use xmgl_core::{
+    AgentFinding, AgentId, Character, CoreResult, LLMUsage, LlmClient, Location, Severity,
+    TaskComplexity, TaskType, TextRange,
+};
 use xmgl_agent::{AgentRegistry, SharedContext};
 
 // =========================================================================
@@ -157,6 +160,10 @@ pub struct AnalysisResult {
     pub total_cost_usd: f64,
     /// 累计延迟 (ms)
     pub total_latency_ms: u64,
+    /// Phase L1: 从 Agent 输出中解析的角色
+    pub extracted_characters: Vec<Character>,
+    /// Phase L1: 从 Agent 输出中解析的地点
+    pub extracted_locations: Vec<Location>,
 }
 
 /// 从所有 Agent 的 JSON 输出中解析结构化发现。
@@ -233,6 +240,39 @@ fn parse_findings(
     findings
 }
 
+/// 从 Agent 输出中提取实体数据（角色 + 地点）。
+///
+/// 遍历所有 Agent 输出，寻找顶层 `characters` 和 `locations` JSON 数组字段。
+fn extract_entities(agent_outputs: &[(AgentId, String)]) -> (Vec<Character>, Vec<Location>) {
+    let mut characters: Vec<Character> = Vec::new();
+    let mut locations: Vec<Location> = Vec::new();
+
+    for (_agent_id, output) in agent_outputs {
+        let parsed = match serde_json::from_str::<serde_json::Value>(output) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        if let Some(chars) = parsed.get("characters").and_then(|v| v.as_array()) {
+            for c in chars {
+                if let Ok(ch) = serde_json::from_value::<Character>(c.clone()) {
+                    characters.push(ch);
+                }
+            }
+        }
+
+        if let Some(locs) = parsed.get("locations").and_then(|v| v.as_array()) {
+            for l in locs {
+                if let Ok(loc) = serde_json::from_value::<Location>(l.clone()) {
+                    locations.push(loc);
+                }
+            }
+        }
+    }
+
+    (characters, locations)
+}
+
 /// 判断两个文本范围是否重叠。
 ///
 /// 重叠检测比精确匹配更保守——两个 Agent 指向同一段文本的不同范围
@@ -265,6 +305,7 @@ fn parse_agent_id(s: &str) -> Option<AgentId> {
         "ReaderExpectation" => Some(AgentId::ReaderExpectation),
         "Conception" => Some(AgentId::Conception),
         "EditorInChief" => Some(AgentId::EditorInChief),
+        "EntityExtract" => Some(AgentId::EntityExtract),
         _ => None,
     }
 }
@@ -640,6 +681,7 @@ impl Orchestrator {
                             AgentId::ReaderExpectation,
                             AgentId::Conception,
                             AgentId::EditorInChief,
+                            AgentId::EntityExtract,
                         ],
                     }
                 }
@@ -693,6 +735,7 @@ impl Orchestrator {
                             AgentId::ReaderExpectation,
                             AgentId::Conception,
                             AgentId::EditorInChief,
+                            AgentId::EntityExtract,
                         ],
                     })
                 }
@@ -880,6 +923,9 @@ impl Orchestrator {
                     }
                 }
 
+                let (extracted_characters, extracted_locations) =
+                    extract_entities(&outputs);
+
                 return Ok(AnalysisResult {
                     agent_outputs: outputs,
                     topology,
@@ -888,6 +934,8 @@ impl Orchestrator {
                     usages,
                     total_cost_usd,
                     total_latency_ms,
+                    extracted_characters,
+                    extracted_locations,
                 });
             }
 
@@ -900,6 +948,8 @@ impl Orchestrator {
                 }
             } else {
                 let findings = parse_findings(&outputs, &ctx.chapter_text);
+                let (extracted_characters, extracted_locations) =
+                    extract_entities(&outputs);
                 return Ok(AnalysisResult {
                     agent_outputs: outputs,
                     topology,
@@ -908,6 +958,8 @@ impl Orchestrator {
                     usages,
                     total_cost_usd: 0.0,
                     total_latency_ms: 0,
+                    extracted_characters,
+                    extracted_locations,
                 });
             }
         }
@@ -1087,8 +1139,8 @@ mod tests {
         orch.hermes_enabled = false;
         let topo = orch.select_topology(TaskType::SceneAnalysis, TaskComplexity::FullScene);
         match topo {
-            AgentTopology::Serial { agents } => assert_eq!(agents.len(), 9),
-            _ => panic!("Expected Serial with all 9 agents"),
+            AgentTopology::Serial { agents } => assert_eq!(agents.len(), 10),
+            _ => panic!("Expected Serial with all 10 agents"),
         }
     }
 
@@ -1312,6 +1364,8 @@ mod tests {
             usages: vec![],
             total_cost_usd: 0.0,
             total_latency_ms: 0,
+            extracted_characters: vec![],
+            extracted_locations: vec![],
         };
         assert_eq!(result.agent_outputs.len(), 1);
         assert_eq!(result.complexity, TaskComplexity::Simple);

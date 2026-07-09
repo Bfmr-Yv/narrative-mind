@@ -25,6 +25,23 @@ fn main() {
             commands::delete_chapter,
             commands::health_check,
             commands::run_analysis,
+            // Phase L1: 实体 CRUD
+            commands::list_characters,
+            commands::get_character,
+            commands::create_character,
+            commands::update_character,
+            commands::delete_character,
+            commands::list_locations,
+            commands::get_location,
+            commands::create_location,
+            commands::update_location,
+            commands::delete_location,
+            commands::list_foreshadows,
+            commands::get_foreshadow,
+            commands::create_foreshadow,
+            commands::update_foreshadow,
+            commands::delete_foreshadow,
+            commands::list_timeline,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Tauri 应用");

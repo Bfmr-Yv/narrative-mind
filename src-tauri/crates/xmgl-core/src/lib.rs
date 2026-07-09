@@ -59,6 +59,7 @@ pub enum AgentId {
     ReaderExpectation,
     Conception,
     EditorInChief,
+    EntityExtract,
 }
 
 impl AgentId {
@@ -73,6 +74,7 @@ impl AgentId {
             AgentId::ReaderExpectation => "预期 Agent",
             AgentId::Conception => "构思 Agent",
             AgentId::EditorInChief => "总编 Agent",
+            AgentId::EntityExtract => "实体提取 Agent",
         }
     }
 
@@ -88,6 +90,7 @@ impl AgentId {
             AgentId::ReaderExpectation => "expectation_analyze",
             AgentId::Conception => "imagery_detect",
             AgentId::EditorInChief => "scene_analysis",
+            AgentId::EntityExtract => "entity_extract",
         }
     }
 
@@ -102,6 +105,7 @@ impl AgentId {
             AgentId::ReaderExpectation,
             AgentId::Conception,
             AgentId::EditorInChief,
+            AgentId::EntityExtract,
         ]
     }
 }
@@ -497,8 +501,8 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_id_all_has_9() {
-        assert_eq!(AgentId::all().len(), 9);
+    fn test_agent_id_all_has_10() {
+        assert_eq!(AgentId::all().len(), 10);
     }
 
     #[test]

@@ -173,6 +173,7 @@ impl AgentRegistry {
         registry.register(Arc::new(ReaderExpectationAgent));
         registry.register(Arc::new(ConceptionAgent));
         registry.register(Arc::new(EditorInChiefAgent));
+        registry.register(Arc::new(EntityExtractAgent));
         registry
     }
 }
@@ -348,6 +349,16 @@ agent_impl!(EditorInChiefAgent, AgentId::EditorInChief, "总编 Agent", ModelTie
     vars
 });
 
+// ── EntityExtractAgent: 实体提取 — Phase L1 ──
+agent_impl!(EntityExtractAgent, AgentId::EntityExtract, "实体提取 Agent", ModelTier::Flash, "entity_extract", |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(ref title) = ctx.chapter_title {
+        vars.insert("chapter_title".into(), title.clone());
+    }
+    vars
+});
+
 // =========================================================================
 // Tests
 // =========================================================================
@@ -412,10 +423,11 @@ mod tests {
             Arc::new(ReaderExpectationAgent),
             Arc::new(ConceptionAgent),
             Arc::new(EditorInChiefAgent),
+            Arc::new(EntityExtractAgent),
         ];
 
         let ids: Vec<AgentId> = agents.iter().map(|a| a.id()).collect();
-        assert_eq!(ids.len(), 9);
+        assert_eq!(ids.len(), 10);
         assert!(ids.contains(&AgentId::Character));
         assert!(ids.contains(&AgentId::EditorInChief));
     }
@@ -527,7 +539,7 @@ mod tests {
     #[test]
     fn test_registry_with_all_agents() {
         let reg = AgentRegistry::with_all_agents();
-        assert_eq!(reg.len(), 9);
+        assert_eq!(reg.len(), 10);
         assert!(reg.get(AgentId::Character).is_some());
         assert!(reg.get(AgentId::EditorInChief).is_some());
     }

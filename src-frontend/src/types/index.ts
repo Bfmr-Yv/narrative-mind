@@ -28,7 +28,8 @@ export type AgentId =
   | "Economy"
   | "ReaderExpectation"
   | "Conception"
-  | "EditorInChief";
+  | "EditorInChief"
+  | "EntityExtract";
 
 // =========================================================================
 // 严重级别
@@ -194,4 +195,83 @@ export interface AgentState {
   status: AgentStatus;
   progress: number;
   error?: string;
+}
+
+// =========================================================================
+// Phase L1: 实体类型（与 Rust xmgl-core 对齐）
+// =========================================================================
+
+export type CharacterStatus = "Alive" | "Dead" | "Unknown";
+
+export interface Character {
+  id: string;
+  project_id: string;
+  name: string;
+  aliases: string[];
+  status: CharacterStatus;
+  current_location: string | null;
+  role: string;
+  summary: string;
+  first_appearance_chapter: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CharacterRelation {
+  id: string;
+  character_a: string;
+  character_b: string;
+  relation_type: string;
+  description: string;
+  created_at: string;
+}
+
+export interface Location {
+  id: string;
+  project_id: string;
+  name: string;
+  aliases: string[];
+  location_type: string;
+  parent_location: string | null;
+  description: string;
+  features: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type ForeshadowStatus = "Planted" | "Hinted" | "PayingOff" | "Resolved";
+
+export interface ForeshadowEntry {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  quote: string | null;
+  setup_chapter_id: string;
+  payoff_chapter_id: string | null;
+  status: ForeshadowStatus;
+  related_characters: string[];
+  related_locations: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type TimelineEventType =
+  | "CharacterIntro"
+  | "CharacterDeath"
+  | "LocationIntro"
+  | "ForeshadowPlanted"
+  | "ForeshadowResolved"
+  | "MajorPlotPoint"
+  | "WorldRuleChange";
+
+export interface TimelineEvent {
+  id: string;
+  chapter_id: string;
+  chapter_title: string;
+  event_type: TimelineEventType;
+  description: string;
+  related_entities: string[];
+  sort_order: number;
 }

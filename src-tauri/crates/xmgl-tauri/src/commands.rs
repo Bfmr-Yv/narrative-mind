@@ -5,7 +5,10 @@
 use crate::{AppState, TauriAnalysisObserver};
 use std::sync::Arc;
 use tauri::State;
-use xmgl_core::{AgentFinding, ChapterData, ProjectMeta, TaskType};
+use xmgl_core::{
+    AgentFinding, ChapterData, Character, ForeshadowEntry, Location,
+    ProjectMeta, TaskType, TimelineEvent,
+};
 use xmgl_agent::SharedContext;
 use xmgl_orchestrator::{AnalysisRequest, AnalysisTrigger};
 
@@ -101,6 +104,10 @@ pub struct AnalysisOutput {
     pub total_cost_usd: f64,
     /// 累计延迟 (ms)
     pub total_latency_ms: u64,
+    /// Phase L1: 提取的角色
+    pub extracted_characters: Vec<Character>,
+    /// Phase L1: 提取的地点
+    pub extracted_locations: Vec<Location>,
 }
 
 #[derive(serde::Serialize)]
@@ -200,5 +207,166 @@ pub async fn run_analysis(
         findings: result.findings,
         total_cost_usd: result.total_cost_usd,
         total_latency_ms: wall_clock_ms,
+        extracted_characters: result.extracted_characters,
+        extracted_locations: result.extracted_locations,
     })
+}
+
+// ── 辅助：从 AppState 获取数据库连接 ──
+
+fn open_db(state: &State<'_, AppState>) -> Result<rusqlite::Connection, String> {
+    let db_path = state.project_manager.db_path();
+    xmgl_memory::open_connection(db_path).map_err(|e| e.to_string())
+}
+
+// ── 角色 ──
+
+#[tauri::command]
+pub fn list_characters(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<Character>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::list_characters_by_project(&conn, &project_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_character(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<Character>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::get_character(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_character(
+    state: State<'_, AppState>,
+    character: Character,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::insert_character(&conn, &character).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_character(
+    state: State<'_, AppState>,
+    character: Character,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::update_character(&conn, &character).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_character(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::delete_character(&conn, &id).map_err(|e| e.to_string())
+}
+
+// ── 地点 ──
+
+#[tauri::command]
+pub fn list_locations(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<Location>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::list_locations_by_project(&conn, &project_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_location(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<Location>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::get_location(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_location(
+    state: State<'_, AppState>,
+    location: Location,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::insert_location(&conn, &location).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_location(
+    state: State<'_, AppState>,
+    location: Location,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::update_location(&conn, &location).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_location(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::delete_location(&conn, &id).map_err(|e| e.to_string())
+}
+
+// ── 伏笔 ──
+
+#[tauri::command]
+pub fn list_foreshadows(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<ForeshadowEntry>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::list_foreshadows_by_project(&conn, &project_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_foreshadow(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<ForeshadowEntry>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::get_foreshadow(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_foreshadow(
+    state: State<'_, AppState>,
+    entry: ForeshadowEntry,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::insert_foreshadow(&conn, &entry).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_foreshadow(
+    state: State<'_, AppState>,
+    entry: ForeshadowEntry,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::update_foreshadow(&conn, &entry).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_foreshadow(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::delete_foreshadow(&conn, &id).map_err(|e| e.to_string())
+}
+
+// ── 时间线（只读） ──
+
+#[tauri::command]
+pub fn list_timeline(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<TimelineEvent>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::list_timeline_by_project(&conn, &project_id).map_err(|e| e.to_string())
 }

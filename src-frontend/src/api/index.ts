@@ -31,3 +31,23 @@ export type { AgentProgress, ProposalReady, AnalysisComplete } from "./events";
 
 export { runAnalysis } from "./analysis";
 export type { AnalysisOutput, AgentOutput } from "./analysis";
+
+// Phase L1: 实体 CRUD
+export {
+  listCharacters,
+  getCharacter,
+  createCharacter,
+  updateCharacter,
+  deleteCharacter,
+  listLocations,
+  getLocation,
+  createLocation,
+  updateLocation,
+  deleteLocation,
+  listForeshadows,
+  getForeshadow,
+  createForeshadow,
+  updateForeshadow,
+  deleteForeshadow,
+  listTimeline,
+} from "./entities";
