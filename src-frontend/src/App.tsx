@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Editor, StatusBar, AnalysisPanel, LibraryPanel } from "./components";
+import { Editor, StatusBar, StickyBoard, LibraryPanel } from "./components";
 import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
@@ -402,7 +402,7 @@ function App() {
             background: "#fafafa",
           }}
         >
-          <AnalysisPanel agentStates={agentStates} />
+          <StickyBoard agentStates={agentStates} />
         </aside>
       </div>
     </div>

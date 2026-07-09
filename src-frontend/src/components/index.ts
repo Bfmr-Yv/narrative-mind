@@ -9,3 +9,4 @@ export { ProgressBar } from "./ProgressBar";
 export { FindingsCard } from "./FindingsCard";
 export { PADView } from "./PADView";
 export { LibraryPanel } from "./LibraryPanel";
+export { StickyBoard } from "./StickyBoard";

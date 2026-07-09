@@ -5,7 +5,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentFinding } from "../types";
+import type { AgentFinding, Character, Location } from "../types";
 
 export interface AgentOutput {
   agent_id: string;
@@ -24,6 +24,10 @@ export interface AnalysisOutput {
   total_cost_usd: number;
   /** 累计延迟 (ms) */
   total_latency_ms: number;
+  /** Phase L1: 提取的角色 */
+  extracted_characters: Character[];
+  /** Phase L1: 提取的地点 */
+  extracted_locations: Location[];
 }
 
 /**
