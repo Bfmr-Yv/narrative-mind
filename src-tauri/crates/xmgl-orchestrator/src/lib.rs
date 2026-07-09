@@ -666,6 +666,7 @@ impl Orchestrator {
                             AgentId::Narrative,
                             AgentId::Prose,
                             AgentId::Theme,
+                            AgentId::EntityExtract,
                         ],
                         chair: AgentId::EditorInChief,
                     }
@@ -720,6 +721,7 @@ impl Orchestrator {
                             AgentId::Narrative,
                             AgentId::Prose,
                             AgentId::Theme,
+                            AgentId::EntityExtract,
                         ],
                         chair: AgentId::EditorInChief,
                     })
