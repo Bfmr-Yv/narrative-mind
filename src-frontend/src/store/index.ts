@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { ProjectMeta, ChapterData, AgentId } from "../types";
+import type { AnalysisOutput } from "../api";
 import * as api from "../api";
 
 /**
@@ -71,6 +72,18 @@ export interface AppState {
   // ── Agent ──
   agents: AgentStatus[];
   updateAgentStatus: (id: AgentId, isBusy: boolean) => void;
+
+  // ── 分析结果 ──
+  /** 最近一次分析结果（null = 未分析） */
+  analysisResult: AnalysisOutput | null;
+  /** 是否正在分析中 */
+  analyzing: boolean;
+  /** 存储分析结果 */
+  setAnalysisResult: (result: AnalysisOutput) => void;
+  /** 设置分析状态 */
+  setAnalyzing: (v: boolean) => void;
+  /** 清除分析结果 */
+  clearAnalysisResult: () => void;
 }
 
 // =========================================================================
@@ -188,4 +201,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       agents: state.agents.map((a) => (a.id === id ? { ...a, isBusy } : a)),
     })),
+
+  // ── 分析结果 ──
+  analysisResult: null,
+  analyzing: false,
+
+  setAnalysisResult: (result) => set({ analysisResult: result }),
+
+  setAnalyzing: (v) => set({ analyzing: v }),
+
+  clearAnalysisResult: () => set({ analysisResult: null }),
 }));

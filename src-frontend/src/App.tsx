@@ -2,6 +2,7 @@
  * Narrative Mind v4.0 — 主应用组件
  *
  * Phase E: Monaco Editor + Agent 标注 + 分析面板 + 状态栏
+ * Phase K: 分析结果迁移到 Zustand store，AnalysisPanel 改为结果浏览器
  */
 
 import { useState, useCallback, useEffect } from "react";
@@ -10,11 +11,17 @@ import { listProjects, listChapters, createProject, createChapter, updateChapter
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
 import type { AgentState, AgentAnnotation } from "./types";
-import type { AnalysisOutput } from "./api";
+import { useAppStore } from "./store";
 import "./App.css";
 
 function App() {
-  // ── 状态 ──
+  // ── Zustand store ──
+  const storeAnalysisResult = useAppStore((s) => s.analysisResult);
+  const storeAnalyzing = useAppStore((s) => s.analyzing);
+  const setAnalysisResult = useAppStore((s) => s.setAnalysisResult);
+  const setAnalyzing = useAppStore((s) => s.setAnalyzing);
+
+  // ── 本地状态 ──
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [chapters, setChapters] = useState<ChapterData[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>("");
@@ -23,10 +30,7 @@ function App() {
   const [annotations, setAnnotations] = useState<AgentAnnotation[]>([]);
   const [proposals, setProposals] = useState<ProposalReady[]>([]);
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
-  const [topology, setTopology] = useState<string>();
-  const [complexity, setComplexity] = useState<string>();
   const [totalCost, setTotalCost] = useState(0);
-  const [analyzing, setAnalyzing] = useState(false);
 
   // ── 加载项目列表 ──
   useEffect(() => {
@@ -76,6 +80,7 @@ function App() {
         prev.map((a) => (a.status === "running" ? { ...a, status: "done", progress: 100 } : a))
       );
       setTotalCost((prev) => prev + evt.total_cost);
+      setAnalyzing(false);
     });
 
     return () => {
@@ -83,7 +88,7 @@ function App() {
       unlisten2.then((fn) => fn());
       unlisten3.then((fn) => fn());
     };
-  }, []);
+  }, [setAnalyzing]);
 
   // ── 章节选择 ──
   const handleSelectChapter = useCallback((ch: ChapterData) => {
@@ -167,51 +172,44 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [handleSave]);
 
-  // ── 分析结果处理 ──
-  const handleAnalysisResult = useCallback(
-    (result: AnalysisOutput) => {
-      setAnalyzing(false);
-      setTopology(result.topology);
-      setComplexity(result.complexity);
-
-      // 使用后端返回的真实 findings（含文本位置）
-      const newAnnotations: AgentAnnotation[] = result.findings.map((f) => ({
-        id: `${result.request_id}-${f.agent_id}-${f.title}`,
-        agent_id: f.agent_id,
-        agent_name: f.agent_id,
-        message: `${f.title}: ${f.description}`.substring(0, 200),
-        severity: f.severity,
-        location: f.location
-          ? {
-              start_line: f.location.start_line,
-              start_column: f.location.start_column,
-              end_line: f.location.end_line,
-              end_column: f.location.end_column,
-            }
-          : undefined,
-        suggestion: f.suggestion ?? undefined,
-      }));
-      setAnnotations(newAnnotations);
-    },
-    []
-  );
+  // ── 分析结果 → 标注映射 ──
+  const applyAnnotations = useCallback((result: typeof storeAnalysisResult) => {
+    if (!result?.findings) return;
+    const newAnnotations: AgentAnnotation[] = result.findings.map((f) => ({
+      id: `${result.request_id}-${f.agent_id}-${f.title}`,
+      agent_id: f.agent_id,
+      agent_name: f.agent_id,
+      message: `${f.title}: ${f.description}`.substring(0, 200),
+      severity: f.severity,
+      location: f.location
+        ? {
+            start_line: f.location.start_line,
+            start_column: f.location.start_column,
+            end_line: f.location.end_line,
+            end_column: f.location.end_column,
+          }
+        : undefined,
+      suggestion: f.suggestion ?? undefined,
+    }));
+    setAnnotations(newAnnotations);
+  }, []);
 
   // ── 快捷分析 ──
   const handleQuickAnalyze = useCallback(async () => {
-    if (!selectedChapter || analyzing) return;
+    if (!selectedChapter || storeAnalyzing) return;
     setAnalyzing(true);
     setAnnotations([]);
     setProposals([]);
     setAgentStates([]);
     try {
       const result = await runAnalysis(selectedChapter.id, "scene_analysis");
-      handleAnalysisResult(result);
+      setAnalysisResult(result);
+      applyAnnotations(result);
     } catch (e) {
       alert(`分析失败: ${e}`);
-    } finally {
       setAnalyzing(false);
     }
-  }, [selectedChapter, analyzing, handleAnalysisResult]);
+  }, [selectedChapter, storeAnalyzing, setAnalyzing, setAnalysisResult, applyAnnotations]);
 
   return (
     <div className="app" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -348,18 +346,18 @@ function App() {
             <span style={{ flex: 1 }} />
             <button
               onClick={handleQuickAnalyze}
-              disabled={!selectedChapter || analyzing}
+              disabled={!selectedChapter || storeAnalyzing}
               style={{
                 padding: "4px 12px",
                 fontSize: 12,
-                background: analyzing ? "#ccc" : "#4285f4",
+                background: storeAnalyzing ? "#ccc" : "#4285f4",
                 color: "#fff",
                 border: "none",
                 borderRadius: 4,
-                cursor: selectedChapter && !analyzing ? "pointer" : "default",
+                cursor: selectedChapter && !storeAnalyzing ? "pointer" : "default",
               }}
             >
-              {analyzing ? "⏳ 分析中..." : "🔍 分析"}
+              {storeAnalyzing ? "⏳ 分析中..." : "🔍 分析"}
             </button>
             <button
               onClick={handleSave}
@@ -388,8 +386,8 @@ function App() {
           {/* 状态栏 */}
           <StatusBar
             agents={agentStates}
-            topology={topology}
-            complexity={complexity}
+            topology={storeAnalysisResult?.topology}
+            complexity={storeAnalysisResult?.complexity}
             totalCost={totalCost}
           />
         </main>
@@ -403,17 +401,7 @@ function App() {
             background: "#fafafa",
           }}
         >
-          {selectedChapter ? (
-            <AnalysisPanel
-              chapterId={selectedChapter.id}
-              onResult={handleAnalysisResult}
-              onError={(err) => console.error("Analysis error:", err)}
-            />
-          ) : (
-            <div style={{ padding: 16, color: "#999", fontSize: 13, textAlign: "center" }}>
-              选择章节以开始分析
-            </div>
-          )}
+          <AnalysisPanel agentStates={agentStates} />
         </aside>
       </div>
     </div>

@@ -256,6 +256,111 @@ pub struct ChapterData {
 }
 
 // =========================================================================
+// Phase L1: 实体类型（角色、地点、伏笔、时间线）
+// =========================================================================
+
+/// 角色状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CharacterStatus {
+    Alive,
+    Dead,
+    Unknown,
+}
+
+/// 角色
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Character {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub aliases: Vec<String>,
+    pub status: CharacterStatus,
+    pub current_location: Option<String>,
+    pub role: String,
+    pub summary: String,
+    pub first_appearance_chapter: Option<String>,
+    pub source: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 角色关系
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CharacterRelation {
+    pub id: String,
+    pub character_a: String,
+    pub character_b: String,
+    pub relation_type: String,
+    pub description: String,
+    pub created_at: String,
+}
+
+/// 地点
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Location {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub aliases: Vec<String>,
+    pub location_type: String,
+    pub parent_location: Option<String>,
+    pub description: String,
+    pub features: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 伏笔状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ForeshadowStatus {
+    Planted,
+    Hinted,
+    PayingOff,
+    Resolved,
+}
+
+/// 伏笔条目
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ForeshadowEntry {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub description: String,
+    pub quote: Option<String>,
+    pub setup_chapter_id: String,
+    pub payoff_chapter_id: Option<String>,
+    pub status: ForeshadowStatus,
+    pub related_characters: Vec<String>,
+    pub related_locations: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 时间线事件类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TimelineEventType {
+    CharacterIntro,
+    CharacterDeath,
+    LocationIntro,
+    ForeshadowPlanted,
+    ForeshadowResolved,
+    MajorPlotPoint,
+    WorldRuleChange,
+}
+
+/// 时间线事件
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimelineEvent {
+    pub id: String,
+    pub chapter_id: String,
+    pub chapter_title: String,
+    pub event_type: TimelineEventType,
+    pub description: String,
+    pub related_entities: Vec<String>,
+    pub sort_order: u32,
+}
+
+// =========================================================================
 // 定价级别
 // =========================================================================
 
