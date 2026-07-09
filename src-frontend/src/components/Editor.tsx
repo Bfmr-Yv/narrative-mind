@@ -340,6 +340,7 @@ export function Editor({
           wordWrap: "on",
           glyphMargin: true,
           folding: false,
+          stickyScroll: { enabled: false },
         }}
       />
 
