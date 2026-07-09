@@ -4,7 +4,7 @@
 //! Phase C: 填充复杂度预判、拓扑选择、Hermes Council 协议实现。
 
 use std::sync::Arc;
-use xmgl_core::{AgentFinding, AgentId, CoreError, CoreResult, LLMCallResponse, LLMUsage, LlmClient, Severity, TaskComplexity, TaskType, TextRange};
+use xmgl_core::{AgentFinding, AgentId, CoreResult, LLMUsage, LlmClient, Severity, TaskComplexity, TaskType, TextRange};
 use xmgl_agent::{AgentRegistry, SharedContext};
 
 // =========================================================================
