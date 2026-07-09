@@ -948,6 +948,7 @@ impl Default for Orchestrator {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use xmgl_core::{CoreError, LLMCallResponse};
 
     // Phase K: FailingMockLlmClient 替代 PythonBridge 用于无 sidecar 环境测试。
     struct FailingMockLlmClient;
