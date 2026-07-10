@@ -246,21 +246,14 @@ export function AnalysisPanel({ agentStates = [] }: AnalysisPanelProps) {
             {/* 非总览标签：简单列表 */}
             {activeTab !== "overview" && (
               <>
-                {activeTab !== "pad" && filteredFindings.map((f, i) => (
+                {filteredFindings.map((f, i) => (
                   <FindingsCard
                     key={`${f.agent_id}-${f.title}-${i}`}
                     finding={f}
                     agentName={AGENT_NAMES[f.agent_id] ?? f.agent_id}
                   />
                 ))}
-                {activeTab === "pad" && filteredFindings.map((f, i) => (
-                  <FindingsCard
-                    key={`${f.agent_id}-${f.title}-${i}`}
-                    finding={f}
-                    agentName={AGENT_NAMES[f.agent_id] ?? f.agent_id}
-                  />
-                ))}
-                {filteredFindings.length === 0 && (!padData || activeTab !== "pad") && (
+                {filteredFindings.length === 0 && !(activeTab === "pad" && padData) && (
                   <EmptyState />
                 )}
               </>

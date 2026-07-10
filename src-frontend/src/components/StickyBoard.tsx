@@ -9,7 +9,7 @@ import { useState, useMemo, useCallback, type FC } from "react";
 import { useAppStore } from "../store";
 import { ProgressBar } from "./ProgressBar";
 import { FindingsCard } from "./FindingsCard";
-import type { AgentFinding, AgentState, Character, Location, ForeshadowEntry } from "../types";
+import type { AgentFinding, AgentState } from "../types";
 
 // =========================================================================
 // StickyNote 类型

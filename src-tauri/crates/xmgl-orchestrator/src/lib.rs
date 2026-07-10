@@ -5,8 +5,8 @@
 
 use std::sync::Arc;
 use xmgl_core::{
-    AgentFinding, AgentId, Character, CoreResult, LLMUsage, LlmClient, Location, Severity,
-    TaskComplexity, TaskType, TextRange,
+    AgentFinding, AgentId, Character, CharacterStatus, CoreResult, LLMUsage, LlmClient, Location,
+    Severity, TaskComplexity, TaskType, TextRange,
 };
 use xmgl_agent::{AgentRegistry, SharedContext};
 
@@ -243,9 +243,17 @@ fn parse_findings(
 /// 从 Agent 输出中提取实体数据（角色 + 地点）。
 ///
 /// 遍历所有 Agent 输出，寻找顶层 `characters` 和 `locations` JSON 数组字段。
-fn extract_entities(agent_outputs: &[(AgentId, String)]) -> (Vec<Character>, Vec<Location>) {
+/// 支持两种格式：
+/// - 字符串数组：`["贾宝玉", "林黛玉"]` → 构造 Character/Location 结构体
+/// - 对象数组：`[{"name": "贾宝玉", ...}]` → 直接反序列化
+fn extract_entities(
+    agent_outputs: &[(AgentId, String)],
+    project_id: &str,
+    chapter_id: Option<&str>,
+) -> (Vec<Character>, Vec<Location>) {
     let mut characters: Vec<Character> = Vec::new();
     let mut locations: Vec<Location> = Vec::new();
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     for (_agent_id, output) in agent_outputs {
         let parsed = match serde_json::from_str::<serde_json::Value>(output) {
@@ -255,16 +263,60 @@ fn extract_entities(agent_outputs: &[(AgentId, String)]) -> (Vec<Character>, Vec
 
         if let Some(chars) = parsed.get("characters").and_then(|v| v.as_array()) {
             for c in chars {
-                if let Ok(ch) = serde_json::from_value::<Character>(c.clone()) {
-                    characters.push(ch);
+                match c {
+                    // LLM 返回字符串 → 从名称构造 Character
+                    serde_json::Value::String(name) => {
+                        let id = format!("char-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+                        characters.push(Character {
+                            id,
+                            project_id: project_id.to_string(),
+                            name: name.clone(),
+                            aliases: vec![],
+                            status: CharacterStatus::Unknown,
+                            current_location: None,
+                            role: String::new(),
+                            summary: String::new(),
+                            first_appearance_chapter: chapter_id.map(|s| s.to_string()),
+                            source: "llm_extract".to_string(),
+                            created_at: now.clone(),
+                            updated_at: now.clone(),
+                        });
+                    }
+                    // 对象值 → 直接反序列化
+                    _ => {
+                        if let Ok(ch) = serde_json::from_value::<Character>(c.clone()) {
+                            characters.push(ch);
+                        }
+                    }
                 }
             }
         }
 
         if let Some(locs) = parsed.get("locations").and_then(|v| v.as_array()) {
             for l in locs {
-                if let Ok(loc) = serde_json::from_value::<Location>(l.clone()) {
-                    locations.push(loc);
+                match l {
+                    // LLM 返回字符串 → 从名称构造 Location
+                    serde_json::Value::String(name) => {
+                        let id = format!("loc-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+                        locations.push(Location {
+                            id,
+                            project_id: project_id.to_string(),
+                            name: name.clone(),
+                            aliases: vec![],
+                            location_type: String::new(),
+                            parent_location: None,
+                            description: String::new(),
+                            features: vec![],
+                            created_at: now.clone(),
+                            updated_at: now.clone(),
+                        });
+                    }
+                    // 对象值 → 直接反序列化
+                    _ => {
+                        if let Ok(loc) = serde_json::from_value::<Location>(l.clone()) {
+                            locations.push(loc);
+                        }
+                    }
                 }
             }
         }
@@ -926,7 +978,7 @@ impl Orchestrator {
                 }
 
                 let (extracted_characters, extracted_locations) =
-                    extract_entities(&outputs);
+                    extract_entities(&outputs, &ctx.project_id, ctx.chapter_id.as_deref());
 
                 return Ok(AnalysisResult {
                     agent_outputs: outputs,
@@ -951,7 +1003,7 @@ impl Orchestrator {
             } else {
                 let findings = parse_findings(&outputs, &ctx.chapter_text);
                 let (extracted_characters, extracted_locations) =
-                    extract_entities(&outputs);
+                    extract_entities(&outputs, &ctx.project_id, ctx.chapter_id.as_deref());
                 return Ok(AnalysisResult {
                     agent_outputs: outputs,
                     topology,

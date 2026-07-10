@@ -259,12 +259,25 @@ macro_rules! agent_impl {
 // ── CharacterAgent: PAD 情感计算 + 角色分析 ──
 agent_impl!(CharacterAgent, AgentId::Character, "角色 Agent", ModelTier::Pro, "pad_compute", |ctx| {
     let mut vars = HashMap::new();
-    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    // 注意：format_pad_prompt 读取 "scene_text"，不是 "chapter_text"
+    vars.insert("scene_text".into(), ctx.chapter_text.clone());
     if let Some(ref title) = ctx.chapter_title {
         vars.insert("chapter_title".into(), title.clone());
     }
     if let Some(profiles) = ctx.metadata.get("character_profiles") {
         vars.insert("character_profiles".into(), profiles.clone());
+    }
+    // 角色 ID — 用于聚焦分析对象
+    if let Some(char_id) = ctx.metadata.get("character_id") {
+        vars.insert("character_id".into(), char_id.clone());
+    }
+    // 语料参考 — 同类角色的历史行为
+    if let Some(corpus) = ctx.metadata.get("corpus_context") {
+        vars.insert("corpus_context".into(), corpus.clone());
+    }
+    // 情感标记 — 已知的情感线索
+    if let Some(note) = ctx.metadata.get("emotion_note") {
+        vars.insert("emotion_note".into(), note.clone());
     }
     vars
 });
@@ -457,7 +470,7 @@ mod tests {
     fn test_agent_build_variables() {
         let ctx = SharedContext::new("p1", "测试文本内容");
         let vars = CharacterAgent.build_variables(&ctx);
-        assert_eq!(vars.get("chapter_text").unwrap(), "测试文本内容");
+        assert_eq!(vars.get("scene_text").unwrap(), "测试文本内容");
         // CharacterAgent 不传 chapter_title（未设置）
         assert!(!vars.contains_key("chapter_title"));
     }
