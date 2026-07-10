@@ -244,8 +244,10 @@ fn parse_findings(
 ///
 /// 遍历所有 Agent 输出，寻找顶层 `characters` 和 `locations` JSON 数组字段。
 /// 支持两种格式：
-/// - 字符串数组：`["贾宝玉", "林黛玉"]` → 构造 Character/Location 结构体
-/// - 对象数组：`[{"name": "贾宝玉", ...}]` → 直接反序列化
+/// - 字符串数组：`["贾宝玉", "林黛玉"]` → 构造 Character/Location 结构体（名称以外字段为空）
+/// - 对象数组：`[{"name": "贾宝玉", "role": "主角", ...}]` → 从 LLM 语义字段提取
+///
+/// 数据库管理字段（id、project_id、created_at、updated_at、source）始终在 Rust 端生成。
 fn extract_entities(
     agent_outputs: &[(AgentId, String)],
     project_id: &str,
@@ -261,12 +263,16 @@ fn extract_entities(
             Err(_) => continue,
         };
 
+        // ── 角色 ──
         if let Some(chars) = parsed.get("characters").and_then(|v| v.as_array()) {
             for c in chars {
                 match c {
-                    // LLM 返回字符串 → 从名称构造 Character
+                    // LLM 返回字符串 → 从名称构造
                     serde_json::Value::String(name) => {
-                        let id = format!("char-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+                        let id = format!(
+                            "char-{}",
+                            &uuid::Uuid::new_v4().to_string()[..8]
+                        );
                         characters.push(Character {
                             id,
                             project_id: project_id.to_string(),
@@ -282,22 +288,87 @@ fn extract_entities(
                             updated_at: now.clone(),
                         });
                     }
-                    // 对象值 → 直接反序列化
+                    // LLM 返回对象 → 提取语义字段
                     _ => {
-                        if let Ok(ch) = serde_json::from_value::<Character>(c.clone()) {
-                            characters.push(ch);
+                        let name = c
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if name.is_empty() {
+                            continue;
                         }
+
+                        let aliases: Vec<String> = c
+                            .get("aliases")
+                            .and_then(|v| v.as_array())
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|v| v.as_str().map(String::from))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        let role = c
+                            .get("role")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let summary = c
+                            .get("summary")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let status = match c
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown")
+                        {
+                            "Dead" => CharacterStatus::Dead,
+                            "Alive" => CharacterStatus::Alive,
+                            _ => CharacterStatus::Unknown,
+                        };
+
+                        let current_location = c
+                            .get("current_location")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(String::from);
+
+                        let id = format!(
+                            "char-{}",
+                            &uuid::Uuid::new_v4().to_string()[..8]
+                        );
+                        characters.push(Character {
+                            id,
+                            project_id: project_id.to_string(),
+                            name: name.to_string(),
+                            aliases,
+                            status,
+                            current_location,
+                            role,
+                            summary,
+                            first_appearance_chapter: chapter_id.map(|s| s.to_string()),
+                            source: "llm_extract".to_string(),
+                            created_at: now.clone(),
+                            updated_at: now.clone(),
+                        });
                     }
                 }
             }
         }
 
+        // ── 地点 ──
         if let Some(locs) = parsed.get("locations").and_then(|v| v.as_array()) {
             for l in locs {
                 match l {
-                    // LLM 返回字符串 → 从名称构造 Location
+                    // LLM 返回字符串 → 从名称构造
                     serde_json::Value::String(name) => {
-                        let id = format!("loc-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+                        let id = format!(
+                            "loc-{}",
+                            &uuid::Uuid::new_v4().to_string()[..8]
+                        );
                         locations.push(Location {
                             id,
                             project_id: project_id.to_string(),
@@ -311,11 +382,70 @@ fn extract_entities(
                             updated_at: now.clone(),
                         });
                     }
-                    // 对象值 → 直接反序列化
+                    // LLM 返回对象 → 提取语义字段
                     _ => {
-                        if let Ok(loc) = serde_json::from_value::<Location>(l.clone()) {
-                            locations.push(loc);
+                        let name = l
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if name.is_empty() {
+                            continue;
                         }
+
+                        let aliases: Vec<String> = l
+                            .get("aliases")
+                            .and_then(|v| v.as_array())
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|v| v.as_str().map(String::from))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        let location_type = l
+                            .get("location_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let description = l
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let features: Vec<String> = l
+                            .get("features")
+                            .and_then(|v| v.as_array())
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|v| v.as_str().map(String::from))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        let parent_location = l
+                            .get("parent_location")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(String::from);
+
+                        let id = format!(
+                            "loc-{}",
+                            &uuid::Uuid::new_v4().to_string()[..8]
+                        );
+                        locations.push(Location {
+                            id,
+                            project_id: project_id.to_string(),
+                            name: name.to_string(),
+                            aliases,
+                            location_type,
+                            parent_location,
+                            description,
+                            features,
+                            created_at: now.clone(),
+                            updated_at: now.clone(),
+                        });
                     }
                 }
             }

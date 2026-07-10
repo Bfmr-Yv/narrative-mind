@@ -61,29 +61,66 @@ PAD模型说明：
 输出严格的JSON格式，不要包含任何其他文本：
 {"pleasure": float, "arousal": float, "dominance": float, "rationale": "简要分析理由，30字以内"}"#;
 
-pub const ENTITY_EXTRACT_SYSTEM: &str = r#"你是一个小说角色和地点实体识别器。你的唯一任务是从给定文本中提取所有角色名称和地点名称。
+pub const ENTITY_EXTRACT_SYSTEM: &str = r#"你是一个小说角色和地点实体识别器。你的任务是从给定文本中提取所有角色和地点，并为每个实体提供语义描述。
 
-## 什么是角色名称
+## 什么是角色
 - 人物的完整姓名（如"贾宝玉"、"林黛玉"）
 - 人物的绰号或称号（如"宝二爷"、"林妹妹"、"凤姐"）
 - 带有姓氏的称谓（如"王夫人"、"贾母"、"刘姥姥"）
 - 单独的姓氏+职业/身份（如"袭人"、"平儿"、"李嬷嬷"）
-- 注意：泛指性代词（他、她、他们、众人、丫鬟们）不算角色名称
+- 注意：泛指性代词（他、她、他们、众人、丫鬟们）不算角色
 
-## 什么是地点名称
+## 什么是地点
 - 具体建筑名（如"大观园"、"荣禧堂"、"潇湘馆"）
 - 区域或街道名（如"宁荣街"、"沁芳桥"）
 - 城镇或地名（如"金陵"、"长安"）
-- 注意：泛指地点（如"房间"、"院子里"、"街上"）不算地点名称
+- 注意：泛指地点（如"房间"、"院子里"、"街上"）不算地点
 
 ## 规则
-1. 只提取明确在文本中出现过的具体名称
-2. 不要编造或推测未出现的实体
-3. 角色和地点各最多返回 20 个
-4. 如果文本中没有角色或地点，返回空数组 []
+1. 只提取明确在文本中出现过的具体名称，不要编造
+2. 角色和地点各最多返回 20 个
+3. 如果文本中没有角色或地点，返回空数组 []
+4. 以下字段如果文本中没有明确信息，使用空字符串 "" 或空数组 []
+
+## 角色对象字段说明
+- name: 角色名称（必填）
+- aliases: 文本中出现的其他称呼（字符串数组）
+- role: 角色在故事中的身份/角色定位，如"主角"、"丫鬟"、"长辈"、"反派"、"路人"等
+- summary: 从文本中可推断的角色简要描述（外貌、性格、行为特征），30-80字
+- status: 角色在当前文本中的存活状态，"Alive"（存活）、"Dead"（已故）或"Unknown"（未知）
+- current_location: 角色当前所在的地点名称（如果文本中提及）
+
+## 地点对象字段说明
+- name: 地点名称（必填）
+- aliases: 文本中出现的其他称呼（字符串数组）
+- location_type: 地点类型，如"院落"、"建筑"、"城镇"、"房间"、"街道"、"园林"、"宫殿"等
+- description: 从文本中可推断的地点简要描述（环境、氛围、功能），30-80字
+- features: 文本中提到的该地点的显著特征（字符串数组），如["竹林", "书房", "琴台"]
+- parent_location: 该地点所属的上层地点（如"潇湘馆"的parent_location是"大观园"）
 
 ## 你必须只输出以下 JSON 格式，不要添加任何解释文字
-{"characters": ["名称1", "名称2"], "locations": ["地点1", "地点2"]}"#;
+{
+  "characters": [
+    {
+      "name": "角色名",
+      "aliases": ["别名1"],
+      "role": "身份定位",
+      "summary": "简要描述",
+      "status": "Alive",
+      "current_location": "所在位置"
+    }
+  ],
+  "locations": [
+    {
+      "name": "地点名",
+      "aliases": ["别名1"],
+      "location_type": "类型",
+      "description": "简要描述",
+      "features": ["特征1"],
+      "parent_location": "上层地点"
+    }
+  ]
+}"#;
 
 pub const ACTION_INFER_SYSTEM: &str = r#"你是一个小说角色行为分析专家。你的任务是根据给定文本，推断角色的行为模式、动机和情感变化趋势。
 
@@ -397,7 +434,7 @@ pub fn format_pad_prompt(vars: &HashMap<String, String>) -> String {
 pub fn format_entity_extract_prompt(vars: &HashMap<String, String>) -> String {
     let chapter_text = get_var(vars, "chapter_text");
     let text = truncate_chars(chapter_text, 4000);
-    format!("## 待分析文本\n\n{text}\n\n## 请提取上述文本中的所有角色名称和地点名称，直接输出 JSON。")
+    format!("## 待分析文本\n\n{text}\n\n## 请提取上述文本中的所有角色和地点，按系统提示的 JSON 格式输出（每个实体必须包含语义描述字段，不要只输出名称字符串）。")
 }
 
 pub fn format_action_infer_prompt(vars: &HashMap<String, String>) -> String {
