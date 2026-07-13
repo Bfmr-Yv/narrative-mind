@@ -5,7 +5,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentFinding, Character, Location, ProjectContext } from "../types";
+import type { AgentFinding, Character, ContextSuggestion, Location, ProjectContext } from "../types";
 
 export interface AgentOutput {
   agent_id: string;
@@ -28,6 +28,8 @@ export interface AnalysisOutput {
   extracted_characters: Character[];
   /** Phase L1: 提取的地点 */
   extracted_locations: Location[];
+  /** Phase C: 上下文反思建议 */
+  context_suggestions: ContextSuggestion[];
 }
 
 /**
@@ -95,8 +97,44 @@ export async function runImportAnalysis(
   text: string,
   projectId: string,
 ): Promise<ProjectContext> {
-  return invoke<import("../types").ProjectContext>("run_import_analysis", {
+  return invoke<ProjectContext>("run_import_analysis", {
     text,
+    projectId,
+  });
+}
+
+// ── Phase C: 建议状态管理 ──
+
+export async function setSuggestionState(
+  suggestionId: string,
+  projectId: string,
+  chapterId: string,
+  suggestionType: string,
+  state: string,
+): Promise<void> {
+  return invoke<void>("set_suggestion_state", {
+    suggestionId,
+    projectId,
+    chapterId,
+    suggestionType,
+    suggestionState: state,
+  });
+}
+
+export async function getDismissedSuggestions(
+  projectId: string,
+  suggestionType: string,
+): Promise<string[]> {
+  return invoke<string[]>("get_dismissed_suggestions", {
+    projectId,
+    suggestionType,
+  });
+}
+
+export async function clearDismissedSuggestions(
+  projectId: string,
+): Promise<void> {
+  return invoke<void>("clear_dismissed_suggestions", {
     projectId,
   });
 }

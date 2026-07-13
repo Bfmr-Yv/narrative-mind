@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use xmgl_core::{
     AgentFinding, AgentId, ChapterOutline, Character, CharacterProfile, CharacterStatus,
-    CoreResult, LLMUsage, LlmClient, Location, PlotOutline, ProjectContext,
+    ContextSuggestion, CoreResult, LLMUsage, LlmClient, Location, PlotOutline, ProjectContext,
     Severity, StyleGuide, TaskComplexity, TaskType, TextRange, WorldRules,
 };
 use xmgl_agent::{AgentRegistry, SharedContext};
@@ -166,6 +166,20 @@ pub struct AnalysisResult {
     pub extracted_characters: Vec<Character>,
     /// Phase L1: 从 Agent 输出中解析的地点
     pub extracted_locations: Vec<Location>,
+    /// Phase C: 上下文反思建议
+    pub context_suggestions: Vec<ContextSuggestion>,
+}
+
+/// 生成 finding 的稳定 ID：hash(agent_id + title + chapter_id + quote) 前 12 位。
+fn generate_finding_id(agent_id: &str, title: &str, chapter_id: &str, quote: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    agent_id.hash(&mut hasher);
+    title.hash(&mut hasher);
+    chapter_id.hash(&mut hasher);
+    quote.hash(&mut hasher);
+    format!("{:012x}", hasher.finish())[..12].to_string()
 }
 
 /// 从所有 Agent 的 JSON 输出中解析结构化发现。
@@ -175,6 +189,7 @@ pub struct AnalysisResult {
 fn parse_findings(
     agent_outputs: &[(AgentId, String)],
     chapter_text: &str,
+    chapter_id: &str,
 ) -> Vec<AgentFinding> {
     let mut findings = Vec::new();
 
@@ -224,7 +239,14 @@ fn parse_findings(
                         None
                     };
 
+                    let finding_id = generate_finding_id(
+                        &format!("{:?}", agent_id),
+                        &title,
+                        chapter_id,
+                        quote,
+                    );
                     findings.push(AgentFinding {
+                        id: finding_id,
                         agent_id: format!("{:?}", agent_id),
                         severity,
                         title,
@@ -494,6 +516,7 @@ fn parse_agent_id(s: &str) -> Option<AgentId> {
         "CharacterProfileExtract" => Some(AgentId::CharacterProfileExtract),
         "PlotStructureExtract" => Some(AgentId::PlotStructureExtract),
         "StyleExtract" => Some(AgentId::StyleExtract),
+        "ContextReflection" => Some(AgentId::ContextReflection),
         _ => None,
     }
 }
@@ -535,6 +558,7 @@ pub fn detect_conflicts(findings: &[AgentFinding]) -> (Vec<AgentFinding>, Vec<Ag
 
                 // AgentFinding — 前端展示
                 conflict_findings.push(AgentFinding {
+                    id: generate_finding_id("HermesCouncil", &format!("[CONFLICT] {} vs {}: {}", a.agent_id, b.agent_id, a.title), "", ""),
                     agent_id: "HermesCouncil".into(),
                     severity: a.severity.max(b.severity),
                     title: format!(
@@ -724,6 +748,66 @@ async fn run_parallel(
     (outputs, usages, success_count)
 }
 
+/// 运行反思阶段：分析 findings 与 ProjectContext 的一致性，产出修订建议。
+///
+/// 反思失败不阻塞——返回空 Vec。
+/// TODO: 接入 run_analysis/run_full_parallel 的 project_context 传递。
+#[allow(dead_code)]
+async fn run_reflection_step(
+    findings: &[AgentFinding],
+    chapter_text: &str,
+    chapter_id: &str,
+    project_context_json: &str,
+    registry: &AgentRegistry,
+    llm: Arc<dyn LlmClient>,
+) -> Vec<ContextSuggestion> {
+    let agent = match registry.get(AgentId::ContextReflection) {
+        Some(a) => a,
+        None => return Vec::new(),
+    };
+
+    let findings_json = serde_json::to_string(findings).unwrap_or_default();
+    let mut ctx = SharedContext::new("", chapter_text);
+    ctx.metadata.insert("findings_json".into(), findings_json);
+    ctx.metadata.insert("project_context_json".into(), project_context_json.to_string());
+    ctx.chapter_id = Some(chapter_id.to_string());
+
+    match agent.analyze(&ctx, llm, TaskType::ContextReflection).await {
+        Ok((output, _usage)) => {
+            // 尝试解析 context_suggestions
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
+                if let Some(suggestions) = parsed.get("context_suggestions").and_then(|v| v.as_array()) {
+                    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    return suggestions.iter().filter_map(|s| {
+                        let field_path = s.get("field_path")?.as_str()?.to_string();
+                        let current_value = s.get("current_value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let suggested_value = s.get("suggested_value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let evidence = s.get("evidence").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let confidence = s.get("confidence").and_then(|v| v.as_f64()).unwrap_or(0.5);
+                        let agent_id = "ContextReflection".to_string();
+
+                        let id = generate_finding_id(&agent_id, &field_path, chapter_id, &evidence);
+
+                        Some(ContextSuggestion {
+                            id,
+                            field_path,
+                            current_value,
+                            suggested_value,
+                            evidence,
+                            confidence,
+                            agent_id,
+                            chapter_id: chapter_id.to_string(),
+                            timestamp: now.clone(),
+                        })
+                    }).collect();
+                }
+            }
+            Vec::new()
+        }
+        Err(_) => Vec::new(), // 反思失败不阻塞
+    }
+}
+
 /// 在文本中搜索片段，返回其行/列/字节范围。
 /// 列号使用 UTF-16 code unit 计数，与 Monaco 编辑器对齐。
 fn find_text_range(haystack: &str, needle: &str) -> Option<TextRange> {
@@ -809,6 +893,7 @@ impl Orchestrator {
             AgentId::CharacterProfileExtract => TaskType::CharacterProfileExtract,
             AgentId::PlotStructureExtract => TaskType::PlotStructureExtract,
             AgentId::StyleExtract => TaskType::StyleExtract,
+            AgentId::ContextReflection => TaskType::ContextReflection,
         }
     }
 
@@ -1041,7 +1126,7 @@ impl Orchestrator {
             ctx.record_output(*id, output.clone());
         }
 
-        let findings = parse_findings(&outputs, &ctx.chapter_text);
+        let findings = parse_findings(&outputs, &ctx.chapter_text, ctx.chapter_id.as_deref().unwrap_or(""));
         let total_cost_usd = usages.iter().map(|(_, u)| u.cost_usd).sum();
         let total_latency_ms = usages.iter().map(|(_, u)| u.latency_ms as u64).sum();
 
@@ -1093,6 +1178,7 @@ impl Orchestrator {
             total_latency_ms,
             extracted_characters,
             extracted_locations,
+            context_suggestions: vec![],
         })
     }
 
@@ -1172,7 +1258,7 @@ impl Orchestrator {
                 || upgrade_round >= self.max_upgrade_rounds
                 || self.upgrade_topology(&topology, request.task_type).is_none()
             {
-                let mut findings = parse_findings(&outputs, &ctx.chapter_text);
+                let mut findings = parse_findings(&outputs, &ctx.chapter_text, ctx.chapter_id.as_deref().unwrap_or(""));
 
                 // ── Phase 4-5: Hermes Council 冲突裁决 + 最终裁定 ──
                 if matches!(topology, AgentTopology::HermesCouncil { .. })
@@ -1196,6 +1282,7 @@ impl Orchestrator {
                             .collect();
 
                         findings.push(AgentFinding {
+                            id: generate_finding_id("HermesCouncil", "[RULING] Hermes Council 最终裁决", "", ""),
                             agent_id: "HermesCouncil".into(),
                             severity: Severity::Info,
                             title: "[RULING] Hermes Council 最终裁决".into(),
@@ -1253,6 +1340,7 @@ impl Orchestrator {
                     total_latency_ms,
                     extracted_characters,
                     extracted_locations,
+                    context_suggestions: vec![],
                 });
             }
 
@@ -1264,7 +1352,7 @@ impl Orchestrator {
                     ctx.outputs.remove(agent_id);
                 }
             } else {
-                let findings = parse_findings(&outputs, &ctx.chapter_text);
+                let findings = parse_findings(&outputs, &ctx.chapter_text, ctx.chapter_id.as_deref().unwrap_or(""));
                 let (extracted_characters, extracted_locations) =
                     extract_entities(&outputs, &ctx.project_id, ctx.chapter_id.as_deref());
                 return Ok(AnalysisResult {
@@ -1277,6 +1365,7 @@ impl Orchestrator {
                     total_latency_ms: 0,
                     extracted_characters,
                     extracted_locations,
+                    context_suggestions: vec![],
                 });
             }
         }
@@ -1946,6 +2035,7 @@ mod tests {
             total_latency_ms: 0,
             extracted_characters: vec![],
             extracted_locations: vec![],
+            context_suggestions: vec![],
         };
         assert_eq!(result.agent_outputs.len(), 1);
         assert_eq!(result.complexity, TaskComplexity::Simple);

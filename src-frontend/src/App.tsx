@@ -6,11 +6,11 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Editor, StatusBar, StickyBoard, LibraryPanel, ProjectSettingsPanel, ImportPanel } from "./components";
-import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
+import { Editor, StatusBar, StickyBoard, LibraryPanel, ProjectSettingsPanel, ImportPanel, ContextSuggestionsPanel } from "./components";
+import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, onAgentProgress, onProposalReady, onAnalysisComplete, setSuggestionState, getDismissedSuggestions, clearDismissedSuggestions } from "./api";
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
-import type { AgentState, AgentAnnotation, ProjectContext } from "./types";
+import type { AgentState, AgentAnnotation, ProjectContext, ContextSuggestion } from "./types";
 import { useAppStore } from "./store";
 import "./App.css";
 
@@ -37,6 +37,9 @@ function App() {
   const [viewMode, setViewMode] = useState<"editor" | "settings" | "import">("editor");
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [dismissedFindingIds, setDismissedFindingIds] = useState<Set<string>>(new Set());
+  const [showContextSuggestions, setShowContextSuggestions] = useState(false);
+  const [contextSuggestions, setContextSuggestions] = useState<ContextSuggestion[]>([]);
 
   // ── 加载项目列表 ──
   useEffect(() => {
@@ -214,15 +217,77 @@ function App() {
     setAnnotations([]);
     setProposals([]);
     setAgentStates([]);
+    setContextSuggestions([]);
     try {
+      // 加载已忽略的建议
+      const dismissed = await getDismissedSuggestions(selectedProject, "finding");
+      setDismissedFindingIds(new Set(dismissed));
+
       const result = await runAnalysis(selectedChapter.id, "scene_analysis");
       setAnalysisResult(result);
       applyAnnotations(result);
+      setContextSuggestions(result.context_suggestions ?? []);
     } catch (e) {
       alert(`分析失败: ${e}`);
       setAnalyzing(false);
     }
-  }, [selectedChapter, storeAnalyzing, setAnalyzing, setAnalysisResult, applyAnnotations]);
+  }, [selectedChapter, storeAnalyzing, selectedProject, setAnalyzing, setAnalysisResult, applyAnnotations]);
+
+  // ── 建议管理 ──
+  const handleDismissFinding = useCallback(async (id: string) => {
+    if (!selectedProject || !selectedChapter) return;
+    await setSuggestionState(id, selectedProject, selectedChapter.id, "finding", "dismissed");
+    setDismissedFindingIds(prev => new Set(prev).add(id));
+  }, [selectedProject, selectedChapter]);
+
+  const handleSnoozeFinding = useCallback(async (id: string) => {
+    if (!selectedProject || !selectedChapter) return;
+    await setSuggestionState(id, selectedProject, selectedChapter.id, "finding", "snoozed");
+    setDismissedFindingIds(prev => new Set(prev).add(id));
+  }, [selectedProject, selectedChapter]);
+
+  const handleClearDismissed = useCallback(async () => {
+    if (!selectedProject) return;
+    await clearDismissedSuggestions(selectedProject);
+    setDismissedFindingIds(new Set());
+  }, [selectedProject]);
+
+  // ── 上下文建议接受 ──
+  const handleAcceptContextSuggestion = useCallback(async (suggestion: ContextSuggestion) => {
+    const ctx = projectContext;
+    if (!ctx || !selectedProject) return;
+    // 用 field_path 定位并修改 ProjectContext
+    try {
+      const updated = { ...ctx };
+      const path = suggestion.field_path;
+      // 简单路径解析
+      if (path === "style_guide.prose_style" && updated.style_guide) {
+        updated.style_guide = { ...updated.style_guide, prose_style: suggestion.suggested_value };
+      } else if (path === "style_guide.sentence_preferences" && updated.style_guide) {
+        updated.style_guide = { ...updated.style_guide, sentence_preferences: suggestion.suggested_value };
+      } else if (path === "style_guide.dialogue_conventions" && updated.style_guide) {
+        updated.style_guide = { ...updated.style_guide, dialogue_conventions: suggestion.suggested_value };
+      } else if (path === "style_guide.narrative_distance" && updated.style_guide) {
+        updated.style_guide = { ...updated.style_guide, narrative_distance: suggestion.suggested_value };
+      } else if (path.startsWith("world_rules.")) {
+        const field = path.replace("world_rules.", "");
+        const wr = updated.world_rules ?? { magic_system: "", technology_level: "", social_structure: "", geography: "", custom_rules: [] };
+        (wr as Record<string, unknown>)[field] = suggestion.suggested_value;
+        updated.world_rules = wr;
+      }
+      await saveProjectContext(updated, ctx.context_version);
+      await loadProjectContext();
+      await setSuggestionState(suggestion.id, selectedProject, suggestion.chapter_id || "", "context_change", "accepted");
+    } catch (e) {
+      console.error("Accept suggestion failed:", e);
+      alert(`应用建议失败: ${e}`);
+    }
+  }, [projectContext, selectedProject, saveProjectContext, loadProjectContext]);
+
+  const handleRejectContextSuggestion = useCallback(async (suggestion: ContextSuggestion) => {
+    if (!selectedProject) return;
+    await setSuggestionState(suggestion.id, selectedProject, suggestion.chapter_id || "", "context_change", "dismissed");
+  }, [selectedProject]);
 
   return (
     <div className="app" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -498,7 +563,25 @@ function App() {
             background: "#fafafa",
           }}
         >
-          <StickyBoard agentStates={agentStates} />
+          {showContextSuggestions && contextSuggestions.length > 0 ? (
+            <ContextSuggestionsPanel
+              suggestions={contextSuggestions}
+              projectContext={projectContext}
+              onAccept={handleAcceptContextSuggestion}
+              onReject={handleRejectContextSuggestion}
+              onClose={() => setShowContextSuggestions(false)}
+            />
+          ) : (
+            <StickyBoard
+              agentStates={agentStates}
+              dismissedFindingIds={dismissedFindingIds}
+              contextSuggestions={contextSuggestions}
+              onDismissFinding={handleDismissFinding}
+              onSnoozeFinding={handleSnoozeFinding}
+              onClearDismissed={handleClearDismissed}
+              onShowContextSuggestions={() => setShowContextSuggestions(true)}
+            />
+          )}
         </aside>
       </div>
     </div>

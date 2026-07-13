@@ -339,3 +339,19 @@ export interface ThemeArc {
   current_stage: string;
   planned_development: string;
 }
+
+// =========================================================================
+// Phase C: 上下文反思建议
+// =========================================================================
+
+export interface ContextSuggestion {
+  id: string;
+  field_path: string;
+  current_value: string;
+  suggested_value: string;
+  evidence: string;
+  confidence: number;
+  agent_id: string;
+  chapter_id: string;
+  timestamp: string;
+}

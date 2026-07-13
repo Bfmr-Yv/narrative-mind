@@ -6,8 +6,8 @@ use crate::{AppState, TauriAnalysisObserver};
 use std::sync::Arc;
 use tauri::State;
 use xmgl_core::{
-    AgentFinding, ChapterData, Character, ForeshadowEntry, Location,
-    ProjectContext, ProjectMeta, TaskType, TimelineEvent,
+    AgentFinding, ChapterData, Character, ContextSuggestion, ForeshadowEntry,
+    Location, ProjectContext, ProjectMeta, TaskType, TimelineEvent,
 };
 use xmgl_agent::SharedContext;
 use xmgl_orchestrator::{AnalysisRequest, AnalysisTrigger};
@@ -108,6 +108,8 @@ pub struct AnalysisOutput {
     pub extracted_characters: Vec<Character>,
     /// Phase L1: 提取的地点
     pub extracted_locations: Vec<Location>,
+    /// Phase C: 上下文反思建议
+    pub context_suggestions: Vec<ContextSuggestion>,
 }
 
 #[derive(serde::Serialize)]
@@ -220,6 +222,7 @@ pub async fn run_analysis(
         total_latency_ms: wall_clock_ms,
         extracted_characters: result.extracted_characters,
         extracted_locations: result.extracted_locations,
+        context_suggestions: result.context_suggestions,
     })
 }
 
@@ -302,6 +305,7 @@ pub async fn run_full_analysis(
         total_latency_ms: wall_clock_ms,
         extracted_characters: result.extracted_characters,
         extracted_locations: result.extracted_locations,
+        context_suggestions: result.context_suggestions,
     })
 }
 
@@ -387,6 +391,46 @@ pub async fn run_import_analysis(
     pctx.project_id = project_id;
 
     Ok(pctx)
+}
+
+// ── 建议状态管理 (Phase C) ──
+
+#[tauri::command]
+pub fn set_suggestion_state(
+    state: State<'_, AppState>,
+    suggestion_id: String,
+    project_id: String,
+    chapter_id: String,
+    suggestion_type: String,
+    suggestion_state: String,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::set_suggestion_state(
+        &conn, &suggestion_id, &project_id, &chapter_id,
+        &suggestion_type, &suggestion_state,
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_dismissed_suggestions(
+    state: State<'_, AppState>,
+    project_id: String,
+    suggestion_type: String,
+) -> Result<Vec<String>, String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::get_dismissed_suggestions(&conn, &project_id, &suggestion_type)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clear_dismissed_suggestions(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<(), String> {
+    let conn = open_db(&state)?;
+    xmgl_memory::clear_dismissed_suggestions(&conn, &project_id)
+        .map_err(|e| e.to_string())
 }
 
 // ── 辅助：从 AppState 获取数据库连接 ──

@@ -214,6 +214,15 @@ pub fn run_migrations(conn: &Connection) -> CoreResult<()> {
             theme_map           TEXT,
             updated_at          TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS suggestion_state (
+            suggestion_id   TEXT PRIMARY KEY,
+            project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            chapter_id      TEXT NOT NULL,
+            suggestion_type TEXT NOT NULL DEFAULT 'finding',
+            state           TEXT NOT NULL DEFAULT 'dismissed',
+            updated_at      TEXT NOT NULL
+        );
         ",
     )
     .map_err(map_err)?;
@@ -670,6 +679,57 @@ pub fn ensure_project_context(conn: &Connection, project_id: &str) -> CoreResult
 
     get_project_context(conn, project_id)?
         .ok_or_else(|| CoreError::Internal("ensure_project_context: insert succeeded but get returned None".into()))
+}
+
+// =========================================================================
+// Suggestion State CRUD (Phase C)
+// =========================================================================
+
+/// 设置建议处理状态（INSERT OR REPLACE）。
+pub fn set_suggestion_state(
+    conn: &Connection,
+    suggestion_id: &str,
+    project_id: &str,
+    chapter_id: &str,
+    suggestion_type: &str,
+    state: &str,
+) -> CoreResult<()> {
+    let updated_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    conn.execute(
+        "INSERT OR REPLACE INTO suggestion_state (suggestion_id, project_id, chapter_id, suggestion_type, state, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![suggestion_id, project_id, chapter_id, suggestion_type, state, updated_at],
+    )
+    .map_err(map_err)?;
+    Ok(())
+}
+
+/// 获取已忽略（非 accepted）的建议 ID 列表。
+pub fn get_dismissed_suggestions(
+    conn: &Connection,
+    project_id: &str,
+    suggestion_type: &str,
+) -> CoreResult<Vec<String>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT suggestion_id FROM suggestion_state
+             WHERE project_id = ?1 AND suggestion_type = ?2 AND state != 'accepted'",
+        )
+        .map_err(map_err)?;
+    let rows = stmt
+        .query_map(params![project_id, suggestion_type], |row| row.get::<_, String>(0))
+        .map_err(map_err)?;
+    rows.collect::<SqlResult<Vec<_>>>().map_err(map_err)
+}
+
+/// 清除项目的所有建议状态记录。
+pub fn clear_dismissed_suggestions(conn: &Connection, project_id: &str) -> CoreResult<()> {
+    conn.execute(
+        "DELETE FROM suggestion_state WHERE project_id = ?1",
+        params![project_id],
+    )
+    .map_err(map_err)?;
+    Ok(())
 }
 
 // =========================================================================

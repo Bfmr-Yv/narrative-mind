@@ -792,6 +792,53 @@ pub fn format_style_extract_prompt(vars: &HashMap<String, String>) -> String {
 pub const EXPAND_CONTEXT_SYSTEM: &str = r#"你是一个小说创作助手。你的任务是根据用户提供的创作上下文和已有内容，帮助补充和完善某个维度的设定。
 请输出补充后的完整内容（JSON格式），不要输出解释性文字，只输出JSON。"#;
 
+// ── Phase C: 上下文反思 prompt ──
+
+pub const CONTEXT_REFLECTION_SYSTEM: &str = r#"你是一个小说创作上下文审核专家。你的任务是对比分析发现(findings)与用户的创作设定(ProjectContext)，找出设定与实际文本之间的偏差，并提出上下文修订建议。
+
+## 分析维度
+1. **角色一致性** — 文本中角色的行为、语言、性格是否与设定一致？
+2. **世界规则** — 文本是否违反了已建立的世界规则？
+3. **风格漂移** — 文本风格是否偏离了设定？
+4. **情节一致性** — 文本情节是否与大纲一致？
+
+## 修订建议原则
+- field_path 使用点号分隔的路径（如 "world_rules.magic_system"）
+- current_value 从 ProjectContext 中提取当前设定
+- suggested_value 基于文本实际表现提出建议
+- evidence 引用触发建议的 findings 中的原文
+- confidence 根据证据强度打分（0.0-1.0）
+- 如果设定和文本一致，可以不输出任何建议
+
+## 输出 JSON 格式
+{"context_suggestions": [{
+  "field_path": "world_rules.magic_system",
+  "current_value": "当前设定值",
+  "suggested_value": "建议的新值",
+  "evidence": "原文片段引用",
+  "confidence": 0.85
+}]}"#;
+
+pub fn format_context_reflection_prompt(vars: &HashMap<String, String>) -> String {
+    let chapter_text = get_var(vars, "chapter_text");
+    let findings = get_var(vars, "findings_json");
+    let project_context = get_var(vars, "project_context_json");
+    let mut parts = vec![
+        "## 当前章节文本".to_string(),
+        chapter_text.to_string(),
+    ];
+    if !findings.is_empty() {
+        parts.push("## 本轮分析发现 (findings)".to_string());
+        parts.push(findings.to_string());
+    }
+    if !project_context.is_empty() {
+        parts.push("## 当前创作上下文 (ProjectContext)".to_string());
+        parts.push(project_context.to_string());
+    }
+    parts.push("请对比上述分析发现与创作上下文，找出不一致之处，输出上下文修订建议。".to_string());
+    parts.join("\n\n")
+}
+
 pub fn format_expand_context_prompt(vars: &HashMap<String, String>) -> String {
     let section = get_var(vars, "section");
     let current = get_var(vars, "current_content");
@@ -902,6 +949,10 @@ pub static PROMPT_REGISTRY: LazyLock<HashMap<&'static str, PromptTemplate>> = La
         system: EXPAND_CONTEXT_SYSTEM,
         format: format_expand_context_prompt,
     });
+    m.insert("context_reflection", PromptTemplate {
+        system: CONTEXT_REFLECTION_SYSTEM,
+        format: format_context_reflection_prompt,
+    });
 
     m
 });
@@ -915,13 +966,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_registry_has_all_21_keys() {
-        let keys: [&str; 21] = [
+    fn test_registry_has_all_23_keys() {
+        let keys: [&str; 23] = [
             "pad_compute", "entity_extract", "action_infer", "rule_check", "spatial_check",
             "rerank", "scene_analysis", "foreshadow_detect", "causal_extract",
             "resolution_check", "event_predict", "style_check", "register_check",
             "theme_extract", "economy_check", "expectation_analyze", "imagery_detect",
             "world_rule_extract", "character_profile_extract", "plot_structure_extract", "style_extract",
+            "expand_context", "context_reflection",
         ];
         for key in keys {
             assert!(PROMPT_REGISTRY.contains_key(key), "missing prompt key: {key}");

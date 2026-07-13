@@ -10,6 +10,9 @@ import type { AgentFinding, Severity } from "../types";
 interface FindingsCardProps {
   finding: AgentFinding;
   agentName?: string;
+  onDismiss?: (id: string) => void;
+  onSnooze?: (id: string) => void;
+  isDismissed?: boolean;
 }
 
 const SEVERITY_CONFIG: Record<Severity, { icon: string; label: string; color: string; bg: string }> = {
@@ -18,7 +21,7 @@ const SEVERITY_CONFIG: Record<Severity, { icon: string; label: string; color: st
   Critical: { icon: "🔴", label: "严重", color: "#ea4335", bg: "#fce8e6" },
 };
 
-export function FindingsCard({ finding, agentName }: FindingsCardProps) {
+export function FindingsCard({ finding, agentName, onDismiss, onSnooze, isDismissed }: FindingsCardProps) {
   const sev = SEVERITY_CONFIG[finding.severity] ?? SEVERITY_CONFIG.Info;
 
   return (
@@ -102,6 +105,25 @@ export function FindingsCard({ finding, agentName }: FindingsCardProps) {
             <span>·</span>
             <span>{new Date(finding.timestamp).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
           </>
+        )}
+        <span style={{ flex: 1 }} />
+        {onDismiss && !isDismissed && (
+          <span style={{ display: "flex", gap: 4 }}>
+            <span
+              title="暂隐（本次隐藏）"
+              onClick={(e) => { e.stopPropagation(); onSnooze?.(finding.id); }}
+              style={{ cursor: "pointer", fontSize: 12, opacity: 0.6 }}
+            >
+              ⏳
+            </span>
+            <span
+              title="忽略（永久隐藏）"
+              onClick={(e) => { e.stopPropagation(); onDismiss(finding.id); }}
+              style={{ cursor: "pointer", fontSize: 12, opacity: 0.6 }}
+            >
+              ❌
+            </span>
+          </span>
         )}
       </div>
     </div>

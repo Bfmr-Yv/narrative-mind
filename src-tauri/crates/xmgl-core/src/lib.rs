@@ -65,6 +65,8 @@ pub enum AgentId {
     CharacterProfileExtract,
     PlotStructureExtract,
     StyleExtract,
+    // Phase C: 分析闭环
+    ContextReflection,
 }
 
 impl AgentId {
@@ -84,6 +86,7 @@ impl AgentId {
             AgentId::CharacterProfileExtract => "角色提取 Agent",
             AgentId::PlotStructureExtract => "情节提取 Agent",
             AgentId::StyleExtract => "风格提取 Agent",
+            AgentId::ContextReflection => "上下文反思 Agent",
         }
     }
 
@@ -104,6 +107,7 @@ impl AgentId {
             AgentId::CharacterProfileExtract => "character_profile_extract",
             AgentId::PlotStructureExtract => "plot_structure_extract",
             AgentId::StyleExtract => "style_extract",
+            AgentId::ContextReflection => "context_reflection",
         }
     }
 
@@ -123,6 +127,7 @@ impl AgentId {
             AgentId::CharacterProfileExtract,
             AgentId::PlotStructureExtract,
             AgentId::StyleExtract,
+            AgentId::ContextReflection,
         ]
     }
 }
@@ -174,6 +179,8 @@ pub enum TaskType {
     CharacterProfileExtract,
     PlotStructureExtract,
     StyleExtract,
+    // Phase C: 分析闭环
+    ContextReflection,
 }
 
 impl TaskType {
@@ -200,6 +207,7 @@ impl TaskType {
             TaskType::CharacterProfileExtract => "character_profile_extract",
             TaskType::PlotStructureExtract => "plot_structure_extract",
             TaskType::StyleExtract => "style_extract",
+            TaskType::ContextReflection => "context_reflection",
         }
     }
 }
@@ -230,6 +238,7 @@ impl FromStr for TaskType {
             "character_profile_extract" => Ok(TaskType::CharacterProfileExtract),
             "plot_structure_extract" => Ok(TaskType::PlotStructureExtract),
             "style_extract" => Ok(TaskType::StyleExtract),
+            "context_reflection" => Ok(TaskType::ContextReflection),
             _ => Err(format!("unknown TaskType: {s}")),
         }
     }
@@ -254,12 +263,40 @@ pub struct TextRange {
 /// 与前端 `src/types/index.ts` 的 `AgentFinding` 对齐。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentFinding {
+    /// 稳定 ID — hash(agent_id + title + chapter_id + quote) 前 12 位
+    pub id: String,
     pub agent_id: String,
     pub severity: Severity,
     pub title: String,
     pub description: String,
     pub location: Option<TextRange>,
     pub suggestion: Option<String>,
+    pub timestamp: String,
+}
+
+/// Phase C: 上下文修订建议 — 反思 Agent 产出。
+///
+/// 每个建议指向 ProjectContext 的某个字段，
+/// 包含当前值、建议值、证据引用和置信度。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextSuggestion {
+    /// 稳定 ID — hash 前 12 位
+    pub id: String,
+    /// 目标字段路径，如 "world_rules.magic_system"
+    pub field_path: String,
+    /// 当前 ProjectContext 中的值
+    pub current_value: String,
+    /// 文本推断出的建议值
+    pub suggested_value: String,
+    /// 触发建议的原文片段
+    pub evidence: String,
+    /// 置信度 0.0–1.0
+    pub confidence: f64,
+    /// 来源 Agent
+    pub agent_id: String,
+    /// 关联章节
+    pub chapter_id: String,
+    /// 时间戳
     pub timestamp: String,
 }
 
@@ -634,8 +671,8 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_id_all_has_14() {
-        assert_eq!(AgentId::all().len(), 14);
+    fn test_agent_id_all_has_15() {
+        assert_eq!(AgentId::all().len(), 15);
     }
 
     #[test]

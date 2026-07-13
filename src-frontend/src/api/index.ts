@@ -34,6 +34,9 @@ export {
   runFullAnalysis,
   expandContextSection,
   runImportAnalysis,
+  setSuggestionState,
+  getDismissedSuggestions,
+  clearDismissedSuggestions,
 } from "./analysis";
 export type { AnalysisOutput, AgentOutput } from "./analysis";
 

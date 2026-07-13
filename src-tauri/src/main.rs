@@ -53,6 +53,10 @@ fn main() {
             // Phase B: 上下文入口
             commands::expand_context_section,
             commands::run_import_analysis,
+            // Phase C: 建议管理
+            commands::set_suggestion_state,
+            commands::get_dismissed_suggestions,
+            commands::clear_dismissed_suggestions,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Tauri 应用");

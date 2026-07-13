@@ -9,7 +9,7 @@ import { useState, useMemo, useCallback, type FC } from "react";
 import { useAppStore } from "../store";
 import { ProgressBar } from "./ProgressBar";
 import { FindingsCard } from "./FindingsCard";
-import type { AgentFinding, AgentState } from "../types";
+import type { AgentFinding, AgentState, ContextSuggestion } from "../types";
 
 // =========================================================================
 // StickyNote 类型
@@ -97,9 +97,23 @@ const WARMUP_NOTES: StickyNote[] = [
 
 interface StickyBoardProps {
   agentStates?: AgentState[];
+  dismissedFindingIds?: Set<string>;
+  contextSuggestions?: ContextSuggestion[];
+  onDismissFinding?: (id: string) => void;
+  onSnoozeFinding?: (id: string) => void;
+  onClearDismissed?: () => void;
+  onShowContextSuggestions?: () => void;
 }
 
-export const StickyBoard: FC<StickyBoardProps> = ({ agentStates = [] }) => {
+export const StickyBoard: FC<StickyBoardProps> = ({
+  agentStates = [],
+  dismissedFindingIds = new Set(),
+  contextSuggestions,
+  onDismissFinding,
+  onSnoozeFinding,
+  onClearDismissed,
+  onShowContextSuggestions,
+}) => {
   // ── Zustand store ──
   const analysisResult = useAppStore((s) => s.analysisResult);
   const analyzing = useAppStore((s) => s.analyzing);
@@ -390,11 +404,46 @@ export const StickyBoard: FC<StickyBoardProps> = ({ agentStates = [] }) => {
                 {AGENT_NAMES[agentId] ?? agentId} ({agentFindings.length})
               </div>
               {agentFindings.map((f, i) => (
-                <FindingsCard key={`${f.agent_id}-${f.title}-${i}`} finding={f} agentName={AGENT_NAMES[f.agent_id] ?? f.agent_id} />
+                {dismissedFindingIds.has(f.id ?? "") ? null : (
+                  <FindingsCard
+                    key={`${f.agent_id}-${f.title}-${i}`}
+                    finding={f}
+                    agentName={AGENT_NAMES[f.agent_id] ?? f.agent_id}
+                    onDismiss={onDismissFinding}
+                    onSnooze={onSnoozeFinding}
+                    isDismissed={dismissedFindingIds.has(f.id ?? "")}
+                  />
+                )}
               ))}
             </div>
           ))}
         </div>
+        {/* 上下文建议链接 + 隐藏计数 */}
+        {(contextSuggestions && contextSuggestions.length > 0 || dismissedFindingIds.size > 0) && (
+          <div style={{
+            padding: "6px 8px", display: "flex", gap: 8, alignItems: "center",
+            borderBottom: "1px solid #f0f0f0", background: "#fafafa", fontSize: 11,
+          }}>
+            {contextSuggestions && contextSuggestions.length > 0 && (
+              <span
+                onClick={onShowContextSuggestions}
+                style={{ cursor: "pointer", color: "#4285f4", fontWeight: 600, flex: 1 }}
+              >
+                📝 {contextSuggestions.length} 条上下文修订建议
+              </span>
+            )}
+            {dismissedFindingIds.size > 0 && (
+              <>
+                <span style={{ color: "#999" }}>已隐藏 {dismissedFindingIds.size} 条</span>
+                {onClearDismissed && (
+                  <span onClick={onClearDismissed} style={{ cursor: "pointer", color: "#e74c3c", fontSize: 10 }}>
+                    重置
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        )}
         {/* 底部元信息 */}
         <div style={{ padding: "4px 8px", fontSize: 10, color: "#999", display: "flex", gap: 12 }}>
           <span>🔀 {analysisResult.topology}</span>
