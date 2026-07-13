@@ -304,6 +304,7 @@ impl AgentRegistry {
         registry.register(Arc::new(PlotStructureExtractAgent));
         registry.register(Arc::new(StyleExtractAgent));
         registry.register(Arc::new(ContextReflectionAgent));
+        registry.register(Arc::new(ContinuationAgent));
         registry
     }
 }
@@ -616,6 +617,27 @@ agent_impl!(StyleExtractAgent, AgentId::StyleExtract, "风格提取 Agent", Mode
     vars
 });
 
+// ── Phase D: 续写 Agent ──
+
+// ContinuationAgent: 基于前文+上下文续写小说（续写+黄金三章共用）
+agent_impl!(ContinuationAgent, AgentId::Continuation, "续写 Agent", ModelTier::Pro,
+    TaskType::Continuation, "continuation",
+    |_tt| "continuation",
+    |ctx| {
+    let mut vars = HashMap::new();
+    vars.insert("chapter_text".into(), ctx.chapter_text.clone());
+    if let Some(pctx) = ctx.metadata.get("project_context_json") {
+        vars.insert("project_context_json".into(), pctx.clone());
+    }
+    if let Some(findings) = ctx.metadata.get("findings_summary") {
+        vars.insert("findings_summary".into(), findings.clone());
+    }
+    if let Some(style) = ctx.metadata.get("style_guide") {
+        vars.insert("style_guide".into(), style.clone());
+    }
+    vars
+});
+
 // ── Phase C: 上下文反思 Agent ──
 
 // ContextReflectionAgent: 对比分析发现与项目上下文，输出修订建议
@@ -704,10 +726,11 @@ mod tests {
             Arc::new(PlotStructureExtractAgent),
             Arc::new(StyleExtractAgent),
             Arc::new(ContextReflectionAgent),
+            Arc::new(ContinuationAgent),
         ];
 
         let ids: Vec<AgentId> = agents.iter().map(|a| a.id()).collect();
-        assert_eq!(ids.len(), 15);
+        assert_eq!(ids.len(), 16);
         assert!(ids.contains(&AgentId::Character));
         assert!(ids.contains(&AgentId::EditorInChief));
     }
@@ -819,7 +842,7 @@ mod tests {
     #[test]
     fn test_registry_with_all_agents() {
         let reg = AgentRegistry::with_all_agents();
-        assert_eq!(reg.len(), 15);
+        assert_eq!(reg.len(), 16);
         assert!(reg.get(AgentId::Character).is_some());
         assert!(reg.get(AgentId::EditorInChief).is_some());
     }

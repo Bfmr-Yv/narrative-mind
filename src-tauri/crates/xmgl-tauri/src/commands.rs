@@ -6,11 +6,11 @@ use crate::{AppState, TauriAnalysisObserver};
 use std::sync::Arc;
 use tauri::State;
 use xmgl_core::{
-    AgentFinding, ChapterData, Character, ContextSuggestion, ForeshadowEntry,
+    AgentFinding, AgentId, ChapterData, Character, ContextSuggestion, ForeshadowEntry,
     Location, ProjectContext, ProjectMeta, TaskType, TimelineEvent,
 };
 use xmgl_agent::SharedContext;
-use xmgl_orchestrator::{AnalysisRequest, AnalysisTrigger};
+use xmgl_orchestrator::{AnalysisRequest, AnalysisTrigger, GoldenThreeState};
 
 // ── 项目 ──
 
@@ -391,6 +391,186 @@ pub async fn run_import_analysis(
     pctx.project_id = project_id;
 
     Ok(pctx)
+}
+
+// ── 续写生成 (Phase D) ──
+
+#[derive(serde::Serialize)]
+pub struct ContinuationOutput {
+    pub continuation_text: String,
+    pub note: String,
+    pub cost_usd: f64,
+}
+
+#[tauri::command]
+pub async fn run_continuation(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    chapter_id: String,
+    editor_text: String,
+) -> Result<ContinuationOutput, String> {
+    let chapter = state
+        .project_manager
+        .get_chapter(&chapter_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("chapter not found: {chapter_id}"))?;
+
+    let mut ctx = SharedContext::new(&chapter.project_id, &editor_text);
+    // enrich ProjectContext
+    match state.project_manager.get_project_context(&chapter.project_id) {
+        Ok(Some(pctx)) => {
+            if let Ok(json) = serde_json::to_string(&pctx) {
+                ctx.metadata.insert("project_context_json".into(), json);
+            }
+            ctx.enrich_with_project_context(&pctx);
+        }
+        _ => {}
+    }
+
+    // 调用 ContinuationAgent
+    let agent = state
+        .agent_registry
+        .get(AgentId::Continuation)
+        .ok_or("ContinuationAgent not found")?;
+
+    let result = agent
+        .analyze(&ctx, Arc::clone(&state.llm_client), TaskType::Continuation)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let cost_usd = result.1.as_ref().map(|u| u.cost_usd).unwrap_or(0.0);
+    // 记录成本
+    if let Some(ref usage) = result.1 {
+        let _ = state.log_cost_entry(
+            "Continuation", "continuation", &usage.model,
+            usage.input_tokens, usage.output_tokens, usage.cost_usd, usage.latency_ms,
+        );
+    }
+
+    Ok(ContinuationOutput {
+        continuation_text: result.0,
+        note: "AI 基于当前上下文续写了后续内容。请审核并确认。".into(),
+        cost_usd,
+    })
+}
+
+// ── 黄金三章 (Phase D) ──
+
+#[derive(serde::Serialize)]
+pub struct GoldenThreeOutput {
+    pub session_id: String,
+    pub stage: u8,
+    pub chapter_text: String,
+    pub consistency_notes: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct GoldenThreeFinal {
+    pub chapter_1: String,
+    pub chapter_2: String,
+    pub chapter_3: String,
+}
+
+#[tauri::command]
+pub async fn start_golden_three(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<GoldenThreeOutput, String> {
+    use xmgl_orchestrator::check_golden_three_prerequisites;
+
+    let pctx = state.project_manager.get_project_context(&project_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("项目尚无创作上下文，请先完成项目设置")?;
+
+    check_golden_three_prerequisites(&pctx)
+        .map_err(|missing| format!("前置条件不满足:\n{}", missing.join("\n")))?;
+
+    let (chapter_text, consistency_notes) = state.orchestrator
+        .run_golden_three_chapter(&pctx, 1, &[], &[], &state.agent_registry, Arc::clone(&state.llm_client))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let gts = GoldenThreeState {
+        stage: 1,
+        project_id: project_id.clone(),
+        chapter_1: chapter_text.clone(),
+        chapter_2: String::new(),
+        chapter_3: String::new(),
+        consistency_notes: consistency_notes.clone(),
+    };
+
+    state.golden_three_sessions.lock().map_err(|e| e.to_string())?
+        .insert(session_id.clone(), gts);
+
+    Ok(GoldenThreeOutput { session_id, stage: 1, chapter_text, consistency_notes })
+}
+
+#[tauri::command]
+pub async fn continue_golden_three(
+    state: State<'_, AppState>,
+    session_id: String,
+    edited_chapter: Option<String>,
+) -> Result<GoldenThreeOutput, String> {
+    let pctx = {
+        let sessions = state.golden_three_sessions.lock().map_err(|e| e.to_string())?;
+        let gts = sessions.get(&session_id).ok_or("session not found")?;
+        let project_id = gts.project_id.clone();
+        gts.clone()
+    };
+
+    let pctx_full = state.project_manager.get_project_context(&pctx.project_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("ProjectContext not found")?;
+
+    // 处理编辑
+    let mut gts = pctx.clone();
+    if let Some(edited) = edited_chapter {
+        match gts.stage {
+            1 => gts.chapter_1 = edited,
+            2 => gts.chapter_2 = edited,
+            _ => {}
+        }
+    }
+
+    gts.stage += 1;
+    let prev_chapters: Vec<String> = match gts.stage {
+        2 => vec![gts.chapter_1.clone()],
+        3 => vec![gts.chapter_1.clone(), gts.chapter_2.clone()],
+        _ => vec![],
+    };
+
+    let (chapter_text, notes) = state.orchestrator
+        .run_golden_three_chapter(&pctx_full, gts.stage, &prev_chapters, &gts.consistency_notes, &state.agent_registry, Arc::clone(&state.llm_client))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    match gts.stage {
+        2 => gts.chapter_2 = chapter_text.clone(),
+        3 => gts.chapter_3 = chapter_text.clone(),
+        _ => {}
+    }
+    gts.consistency_notes.extend(notes.clone());
+
+    let stage = gts.stage;
+    state.golden_three_sessions.lock().map_err(|e| e.to_string())?
+        .insert(session_id.clone(), gts);
+
+    Ok(GoldenThreeOutput { session_id, stage, chapter_text, consistency_notes: notes })
+}
+
+#[tauri::command]
+pub fn finalize_golden_three(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<GoldenThreeFinal, String> {
+    let mut sessions = state.golden_three_sessions.lock().map_err(|e| e.to_string())?;
+    let gts = sessions.remove(&session_id).ok_or("session not found")?;
+    Ok(GoldenThreeFinal {
+        chapter_1: gts.chapter_1,
+        chapter_2: gts.chapter_2,
+        chapter_3: gts.chapter_3,
+    })
 }
 
 // ── 建议状态管理 (Phase C) ──

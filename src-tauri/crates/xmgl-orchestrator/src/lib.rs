@@ -517,6 +517,7 @@ fn parse_agent_id(s: &str) -> Option<AgentId> {
         "PlotStructureExtract" => Some(AgentId::PlotStructureExtract),
         "StyleExtract" => Some(AgentId::StyleExtract),
         "ContextReflection" => Some(AgentId::ContextReflection),
+        "Continuation" => Some(AgentId::Continuation),
         _ => None,
     }
 }
@@ -750,9 +751,22 @@ async fn run_parallel(
 
 /// 运行反思阶段：分析 findings 与 ProjectContext 的一致性，产出修订建议。
 ///
+/// 从 SharedContext metadata 拼装 ProjectContext JSON 字符串（供反思 Agent 使用）。
+fn build_project_context_json(ctx: &SharedContext) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for key in &["world_rules", "character_profiles", "plot_outline", "style_guide", "theme_keywords", "genre", "imagery_keywords"] {
+        if let Some(val) = ctx.metadata.get(*key) {
+            parts.push(format!("\"{}\":{}", key, serde_json::Value::String(val.clone())));
+        }
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("{{{}}}", parts.join(","))
+    }
+}
+
 /// 反思失败不阻塞——返回空 Vec。
-/// TODO: 接入 run_analysis/run_full_parallel 的 project_context 传递。
-#[allow(dead_code)]
 async fn run_reflection_step(
     findings: &[AgentFinding],
     chapter_text: &str,
@@ -894,6 +908,7 @@ impl Orchestrator {
             AgentId::PlotStructureExtract => TaskType::PlotStructureExtract,
             AgentId::StyleExtract => TaskType::StyleExtract,
             AgentId::ContextReflection => TaskType::ContextReflection,
+            AgentId::Continuation => TaskType::Continuation,
         }
     }
 
@@ -1155,6 +1170,21 @@ impl Orchestrator {
         let (extracted_characters, extracted_locations) =
             extract_entities(&outputs, &ctx.project_id, ctx.chapter_id.as_deref());
 
+        // ── Phase C: 分析→反思串联 ──
+        let context_suggestions = if self.enable_reflection {
+            let pctx_json = build_project_context_json(ctx);
+            run_reflection_step(
+                &findings,
+                &ctx.chapter_text,
+                ctx.chapter_id.as_deref().unwrap_or(""),
+                &pctx_json,
+                registry,
+                Arc::clone(&llm),
+            ).await
+        } else {
+            vec![]
+        };
+
         Ok(AnalysisResult {
             agent_outputs: outputs,
             topology: AgentTopology::Parallel {
@@ -1178,7 +1208,7 @@ impl Orchestrator {
             total_latency_ms,
             extracted_characters,
             extracted_locations,
-            context_suggestions: vec![],
+            context_suggestions,
         })
     }
 
@@ -1330,6 +1360,21 @@ impl Orchestrator {
                 let (extracted_characters, extracted_locations) =
                     extract_entities(&outputs, &ctx.project_id, ctx.chapter_id.as_deref());
 
+                // ── Phase C: 分析→反思串联 ──
+                let context_suggestions = if self.enable_reflection {
+                    let pctx_json = build_project_context_json(ctx);
+                    run_reflection_step(
+                        &findings,
+                        &ctx.chapter_text,
+                        ctx.chapter_id.as_deref().unwrap_or(""),
+                        &pctx_json,
+                        registry,
+                        Arc::clone(&llm),
+                    ).await
+                } else {
+                    vec![]
+                };
+
                 return Ok(AnalysisResult {
                     agent_outputs: outputs,
                     topology,
@@ -1340,7 +1385,7 @@ impl Orchestrator {
                     total_latency_ms,
                     extracted_characters,
                     extracted_locations,
-                    context_suggestions: vec![],
+                    context_suggestions,
                 });
             }
 
@@ -1355,6 +1400,21 @@ impl Orchestrator {
                 let findings = parse_findings(&outputs, &ctx.chapter_text, ctx.chapter_id.as_deref().unwrap_or(""));
                 let (extracted_characters, extracted_locations) =
                     extract_entities(&outputs, &ctx.project_id, ctx.chapter_id.as_deref());
+
+                let context_suggestions = if self.enable_reflection {
+                    let pctx_json = build_project_context_json(ctx);
+                    run_reflection_step(
+                        &findings,
+                        &ctx.chapter_text,
+                        ctx.chapter_id.as_deref().unwrap_or(""),
+                        &pctx_json,
+                        registry,
+                        Arc::clone(&llm),
+                    ).await
+                } else {
+                    vec![]
+                };
+
                 return Ok(AnalysisResult {
                     agent_outputs: outputs,
                     topology,
@@ -1365,7 +1425,7 @@ impl Orchestrator {
                     total_latency_ms: 0,
                     extracted_characters,
                     extracted_locations,
-                    context_suggestions: vec![],
+                    context_suggestions,
                 });
             }
         }
@@ -1395,6 +1455,128 @@ impl Orchestrator {
 impl Default for Orchestrator {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// =========================================================================
+// Phase D: 黄金三章
+// =========================================================================
+
+/// 黄金三章生成会话状态。
+#[derive(Debug, Clone)]
+pub struct GoldenThreeState {
+    pub stage: u8,                       // 1 | 2 | 3 | 4(完成)
+    pub project_id: String,
+    pub chapter_1: String,
+    pub chapter_2: String,
+    pub chapter_3: String,
+    pub consistency_notes: Vec<String>,
+}
+
+/// 黄金三章前置条件检查。
+/// 返回 Ok(()) 或 Err(缺少项列表)。
+pub fn check_golden_three_prerequisites(pctx: &ProjectContext) -> Result<(), Vec<String>> {
+    let mut missing = Vec::new();
+    if pctx.world_rules.is_none() || pctx.world_rules.as_ref().map_or(true, |w| w.magic_system.is_empty() && w.custom_rules.is_empty()) {
+        missing.push("世界观规则（至少填写力量体系或自定义规则）".into());
+    }
+    if pctx.character_profiles.is_empty() {
+        missing.push("至少一个角色档案".into());
+    }
+    if pctx.plot_outline.as_ref().map_or(true, |p| p.main_plot.is_empty()) {
+        missing.push("情节大纲（主线情节）".into());
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+
+impl Orchestrator {
+    /// 生成黄金三章中的一章。
+    ///
+    /// 1. 构建 prompt context（ProjectContext + 前章全文 + 一致性备注）
+    /// 2. 调用 ContinuationAgent 生成章节
+    /// 3. 调用 WorldAgent + ProseAgent 做一致性检查
+    /// 4. 返回 (章节文本, 一致性备注列表)
+    pub async fn run_golden_three_chapter(
+        &self,
+        project_context: &ProjectContext,
+        chapter_number: u8,
+        previous_chapters: &[String],
+        consistency_notes: &[String],
+        registry: &AgentRegistry,
+        llm: Arc<dyn LlmClient>,
+    ) -> CoreResult<(String, Vec<String>)> {
+        let pctx_json = serde_json::to_string(project_context).unwrap_or_default();
+
+        // 构建上下文文本：前章全文 + 一致性备注
+        let mut context_text = String::new();
+        for (i, ch) in previous_chapters.iter().enumerate() {
+            context_text.push_str(&format!("## 第{}章\n{}\n\n", i + 1, ch));
+        }
+        if !consistency_notes.is_empty() {
+            context_text.push_str("## 一致性注意事项\n");
+            for note in consistency_notes {
+                context_text.push_str(&format!("- {}\n", note));
+            }
+            context_text.push('\n');
+        }
+
+        // 构建 SharedContext
+        let mut ctx = SharedContext::new("", &context_text);
+        ctx.metadata.insert("project_context_json".into(), pctx_json);
+        if let Some(ref sg) = project_context.style_guide {
+            if let Ok(json) = serde_json::to_string(sg) {
+                ctx.metadata.insert("style_guide".into(), json);
+            }
+        }
+
+        // 调用 ContinuationAgent
+        let agent = registry.get(AgentId::Continuation)
+            .ok_or_else(|| xmgl_core::CoreError::NotFound("ContinuationAgent not registered".into()))?;
+
+        let (chapter_text, _usage) = agent
+            .analyze(&ctx, Arc::clone(&llm), TaskType::Continuation)
+            .await?;
+
+        // 一致性检查：WorldAgent + ProseAgent
+        let mut notes = Vec::new();
+        let mut check_ctx = SharedContext::new("", &chapter_text);
+        check_ctx.metadata.insert("project_context_json".into(), serde_json::to_string(project_context).unwrap_or_default());
+
+        // WorldAgent check
+        if let Some(world_agent) = registry.get(AgentId::World) {
+            if let Ok((output, _)) = world_agent.analyze(&check_ctx, Arc::clone(&llm), TaskType::RuleCheck).await {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
+                    if let Some(findings) = parsed.get("findings").and_then(|v| v.as_array()) {
+                        for f in findings.iter().take(3) {
+                            if let Some(title) = f.get("title").and_then(|v| v.as_str()) {
+                                notes.push(format!("[世界规则] {}", title));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ProseAgent check
+        if let Some(prose_agent) = registry.get(AgentId::Prose) {
+            if let Ok((output, _)) = prose_agent.analyze(&check_ctx, Arc::clone(&llm), TaskType::StyleCheck).await {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
+                    if let Some(findings) = parsed.get("findings").and_then(|v| v.as_array()) {
+                        for f in findings.iter().take(2) {
+                            if let Some(title) = f.get("title").and_then(|v| v.as_str()) {
+                                notes.push(format!("[文风检查] {}", title));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok((chapter_text, notes))
     }
 }
 

@@ -37,6 +37,10 @@ export {
   setSuggestionState,
   getDismissedSuggestions,
   clearDismissedSuggestions,
+  runContinuation,
+  startGoldenThree,
+  continueGoldenThree,
+  finalizeGoldenThree,
 } from "./analysis";
 export type { AnalysisOutput, AgentOutput } from "./analysis";
 

@@ -67,6 +67,8 @@ pub enum AgentId {
     StyleExtract,
     // Phase C: 分析闭环
     ContextReflection,
+    // Phase D: 生成能力
+    Continuation,
 }
 
 impl AgentId {
@@ -87,6 +89,7 @@ impl AgentId {
             AgentId::PlotStructureExtract => "情节提取 Agent",
             AgentId::StyleExtract => "风格提取 Agent",
             AgentId::ContextReflection => "上下文反思 Agent",
+            AgentId::Continuation => "续写 Agent",
         }
     }
 
@@ -108,6 +111,7 @@ impl AgentId {
             AgentId::PlotStructureExtract => "plot_structure_extract",
             AgentId::StyleExtract => "style_extract",
             AgentId::ContextReflection => "context_reflection",
+            AgentId::Continuation => "continuation",
         }
     }
 
@@ -128,6 +132,7 @@ impl AgentId {
             AgentId::PlotStructureExtract,
             AgentId::StyleExtract,
             AgentId::ContextReflection,
+            AgentId::Continuation,
         ]
     }
 }
@@ -181,6 +186,8 @@ pub enum TaskType {
     StyleExtract,
     // Phase C: 分析闭环
     ContextReflection,
+    // Phase D: 生成能力
+    Continuation,
 }
 
 impl TaskType {
@@ -208,6 +215,7 @@ impl TaskType {
             TaskType::PlotStructureExtract => "plot_structure_extract",
             TaskType::StyleExtract => "style_extract",
             TaskType::ContextReflection => "context_reflection",
+            TaskType::Continuation => "continuation",
         }
     }
 }
@@ -239,6 +247,7 @@ impl FromStr for TaskType {
             "plot_structure_extract" => Ok(TaskType::PlotStructureExtract),
             "style_extract" => Ok(TaskType::StyleExtract),
             "context_reflection" => Ok(TaskType::ContextReflection),
+            "continuation" => Ok(TaskType::Continuation),
             _ => Err(format!("unknown TaskType: {s}")),
         }
     }
@@ -671,8 +680,8 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_id_all_has_15() {
-        assert_eq!(AgentId::all().len(), 15);
+    fn test_agent_id_all_has_16() {
+        assert_eq!(AgentId::all().len(), 16);
     }
 
     #[test]

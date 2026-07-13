@@ -138,3 +138,54 @@ export async function clearDismissedSuggestions(
     projectId,
   });
 }
+
+// ── Phase D: 续写生成 ──
+
+export interface ContinuationOutput {
+  continuation_text: string;
+  note: string;
+  cost_usd: number;
+}
+
+export async function runContinuation(
+  chapterId: string,
+  editorText: string,
+): Promise<ContinuationOutput> {
+  return invoke<ContinuationOutput>("run_continuation", {
+    chapterId,
+    editorText,
+  });
+}
+
+// ── Phase D: 黄金三章 ──
+
+export interface GoldenThreeOutput {
+  session_id: string;
+  stage: number;
+  chapter_text: string;
+  consistency_notes: string[];
+}
+
+export interface GoldenThreeFinal {
+  chapter_1: string;
+  chapter_2: string;
+  chapter_3: string;
+}
+
+export async function startGoldenThree(projectId: string): Promise<GoldenThreeOutput> {
+  return invoke<GoldenThreeOutput>("start_golden_three", { projectId });
+}
+
+export async function continueGoldenThree(
+  sessionId: string,
+  editedChapter?: string,
+): Promise<GoldenThreeOutput> {
+  return invoke<GoldenThreeOutput>("continue_golden_three", {
+    sessionId,
+    editedChapter: editedChapter ?? null,
+  });
+}
+
+export async function finalizeGoldenThree(sessionId: string): Promise<GoldenThreeFinal> {
+  return invoke<GoldenThreeFinal>("finalize_golden_three", { sessionId });
+}

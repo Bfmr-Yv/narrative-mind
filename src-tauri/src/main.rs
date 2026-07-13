@@ -57,6 +57,12 @@ fn main() {
             commands::set_suggestion_state,
             commands::get_dismissed_suggestions,
             commands::clear_dismissed_suggestions,
+            // Phase D: 续写生成
+            commands::run_continuation,
+            // Phase D: 黄金三章
+            commands::start_golden_three,
+            commands::continue_golden_three,
+            commands::finalize_golden_three,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Tauri 应用");

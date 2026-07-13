@@ -819,6 +819,48 @@ pub const CONTEXT_REFLECTION_SYSTEM: &str = r#"你是一个小说创作上下文
   "confidence": 0.85
 }]}"#;
 
+// ── Phase D: 续写 prompt ──
+
+pub const CONTINUATION_SYSTEM: &str = r#"你是一个专业的小说续写助手。你的任务是根据前文、创作上下文和分析发现，续写小说的后续内容。
+
+## 核心原则
+1. **严格遵循上下文** — 世界观规则、角色档案、情节大纲必须严格遵守
+2. **延续伏笔** — 已埋设的伏笔要自然推进
+3. **文风一致** — 与原有文风保持一致，包括句式、对话风格、叙事距离
+4. **输出纯正文** — 不要任何元信息、不要章节标题、不要"续写如下"
+5. **自然过渡** — 从前文最后一句自然衔接
+6. **适当长度** — 续写500-1500字，在自然段落结束
+
+## 输出格式
+直接输出小说正文，不要包裹在JSON或任何标记中。
+不要输出"续写："、"接上文："等引导语。
+用中文全角标点。"#;
+
+pub fn format_continuation_prompt(vars: &HashMap<String, String>) -> String {
+    let chapter_text = get_var(vars, "chapter_text");
+    let project_context = get_var(vars, "project_context_json");
+    let findings_summary = get_var(vars, "findings_summary");
+    let style_guide = get_var(vars, "style_guide");
+    let mut parts = vec![
+        "## 前文内容（请从此处续写）".to_string(),
+        chapter_text.to_string(),
+    ];
+    if !project_context.is_empty() {
+        parts.push("## 创作上下文（必须遵循）".to_string());
+        parts.push(project_context.to_string());
+    }
+    if !style_guide.is_empty() {
+        parts.push("## 文风要求".to_string());
+        parts.push(style_guide.to_string());
+    }
+    if !findings_summary.is_empty() {
+        parts.push("## 分析发现（需注意或延续的点）".to_string());
+        parts.push(findings_summary.to_string());
+    }
+    parts.push("请在上述前文之后直接续写，保持风格一致，自然过渡。只输出续写的正文：".to_string());
+    parts.join("\n\n")
+}
+
 pub fn format_context_reflection_prompt(vars: &HashMap<String, String>) -> String {
     let chapter_text = get_var(vars, "chapter_text");
     let findings = get_var(vars, "findings_json");
@@ -953,6 +995,10 @@ pub static PROMPT_REGISTRY: LazyLock<HashMap<&'static str, PromptTemplate>> = La
         system: CONTEXT_REFLECTION_SYSTEM,
         format: format_context_reflection_prompt,
     });
+    m.insert("continuation", PromptTemplate {
+        system: CONTINUATION_SYSTEM,
+        format: format_continuation_prompt,
+    });
 
     m
 });
@@ -966,14 +1012,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_registry_has_all_23_keys() {
-        let keys: [&str; 23] = [
+    fn test_registry_has_all_24_keys() {
+        let keys: [&str; 24] = [
             "pad_compute", "entity_extract", "action_infer", "rule_check", "spatial_check",
             "rerank", "scene_analysis", "foreshadow_detect", "causal_extract",
             "resolution_check", "event_predict", "style_check", "register_check",
             "theme_extract", "economy_check", "expectation_analyze", "imagery_detect",
             "world_rule_extract", "character_profile_extract", "plot_structure_extract", "style_extract",
-            "expand_context", "context_reflection",
+            "expand_context", "context_reflection", "continuation",
         ];
         for key in keys {
             assert!(PROMPT_REGISTRY.contains_key(key), "missing prompt key: {key}");

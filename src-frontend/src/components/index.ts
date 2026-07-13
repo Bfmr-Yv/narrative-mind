@@ -13,3 +13,4 @@ export { StickyBoard } from "./StickyBoard";
 export { ProjectSettingsPanel } from "./ProjectSettingsPanel";
 export { ImportPanel } from "./ImportPanel";
 export { ContextSuggestionsPanel } from "./ContextSuggestionsPanel";
+export { GoldenThreeWizard } from "./GoldenThreeWizard";

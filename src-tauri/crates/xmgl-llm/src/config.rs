@@ -196,6 +196,7 @@ pub fn tier_route(task_type: &str) -> Option<TierRoute> {
         "style_extract" => Some(TierRoute { max_tokens: 2048, temperature: 0.1 }),
         "expand_context" => Some(TierRoute { max_tokens: 2048, temperature: 0.5 }),
         "context_reflection" => Some(TierRoute { max_tokens: 2048, temperature: 0.3 }),
+        "continuation" => Some(TierRoute { max_tokens: 4096, temperature: 0.7 }),
         _ => None,
     }
 }

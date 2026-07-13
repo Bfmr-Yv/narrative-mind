@@ -6,8 +6,8 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Editor, StatusBar, StickyBoard, LibraryPanel, ProjectSettingsPanel, ImportPanel, ContextSuggestionsPanel } from "./components";
-import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, onAgentProgress, onProposalReady, onAnalysisComplete, setSuggestionState, getDismissedSuggestions, clearDismissedSuggestions } from "./api";
+import { Editor, StatusBar, StickyBoard, LibraryPanel, ProjectSettingsPanel, ImportPanel, ContextSuggestionsPanel, GoldenThreeWizard } from "./components";
+import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, runContinuation, onAgentProgress, onProposalReady, onAnalysisComplete, setSuggestionState, getDismissedSuggestions, clearDismissedSuggestions } from "./api";
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
 import type { AgentState, AgentAnnotation, ProjectContext, ContextSuggestion } from "./types";
@@ -34,12 +34,15 @@ function App() {
   const [proposals, setProposals] = useState<ProposalReady[]>([]);
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
   const [totalCost, setTotalCost] = useState(0);
-  const [viewMode, setViewMode] = useState<"editor" | "settings" | "import">("editor");
+  const [viewMode, setViewMode] = useState<"editor" | "settings" | "import" | "golden">("editor");
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [dismissedFindingIds, setDismissedFindingIds] = useState<Set<string>>(new Set());
   const [showContextSuggestions, setShowContextSuggestions] = useState(false);
   const [contextSuggestions, setContextSuggestions] = useState<ContextSuggestion[]>([]);
+  const [continuationPending, setContinuationPending] = useState<string | null>(null);
+  const [continuationCost, setContinuationCost] = useState(0);
+  const [continuing, setContinuing] = useState(false);
 
   // ── 加载项目列表 ──
   useEffect(() => {
@@ -284,6 +287,38 @@ function App() {
     }
   }, [projectContext, selectedProject, saveProjectContext, loadProjectContext]);
 
+  // ── 续写 ──
+  const handleContinuation = useCallback(async () => {
+    if (!selectedChapter || continuing) return;
+    setContinuing(true);
+    try {
+      const result = await runContinuation(selectedChapter.id, editorContent);
+      // 追加续写文本（用分隔注释标记）
+      const continuation = "\n\n" + result.continuation_text;
+      setContinuationPending(continuation);
+      setContinuationCost(result.cost_usd);
+      setEditorContent(prev => prev + continuation);
+    } catch (e) {
+      alert(`续写失败: ${e}`);
+    } finally {
+      setContinuing(false);
+    }
+  }, [selectedChapter, editorContent, continuing]);
+
+  const handleAcceptContinuation = useCallback(() => {
+    setContinuationPending(null);
+    setContinuationCost(0);
+  }, []);
+
+  const handleRejectContinuation = useCallback(() => {
+    if (continuationPending) {
+      // 移除续写部分
+      setEditorContent(prev => prev.replace(continuationPending, ""));
+    }
+    setContinuationPending(null);
+    setContinuationCost(0);
+  }, [continuationPending]);
+
   const handleRejectContextSuggestion = useCallback(async (suggestion: ContextSuggestion) => {
     if (!selectedProject) return;
     await setSuggestionState(suggestion.id, selectedProject, suggestion.chapter_id || "", "context_change", "dismissed");
@@ -362,6 +397,12 @@ function App() {
           title="导入已有作品"
           style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: selectedProject ? "pointer" : "default", opacity: selectedProject ? 1 : 0.4 }}>
           📥 导入
+        </button>
+        <button onClick={() => { if (selectedProject) { loadProjectContext(); setViewMode("golden"); } }}
+          disabled={!selectedProject}
+          title="一键黄金三章"
+          style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #f9ab00", borderRadius: 4, background: "#fff", color: "#e37400", cursor: selectedProject ? "pointer" : "default", opacity: selectedProject ? 1 : 0.4 }}>
+          🚀 黄金三章
         </button>
       </header>
 
@@ -459,6 +500,17 @@ function App() {
               }}
               onClose={() => setViewMode("editor")}
             />
+          ) : viewMode === "golden" && selectedProject ? (
+            <GoldenThreeWizard
+              projectId={selectedProject}
+              projectContext={projectContext}
+              onComplete={async () => {
+                // 重新加载章节列表
+                const chs = await listChapters(selectedProject);
+                setChapters(chs);
+              }}
+              onClose={() => setViewMode("editor")}
+            />
           ) : (
             <>
               {/* 编辑器工具栏 */}
@@ -492,6 +544,21 @@ function App() {
                   {storeAnalyzing ? "⏳ 分析中..." : "🔍 分析"}
                 </button>
                 <button
+                  onClick={handleContinuation}
+                  disabled={!selectedChapter || continuing}
+                  style={{
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    border: "1px solid #4285f4",
+                    borderRadius: 4,
+                    background: continuing ? "#e8f0fe" : "#fff",
+                    color: "#4285f4",
+                    cursor: selectedChapter && !continuing ? "pointer" : "default",
+                  }}
+                >
+                  {continuing ? "⏳ 续写中..." : "✨ 续写"}
+                </button>
+                <button
                   onClick={handleSave}
                   disabled={!selectedChapter}
                   style={{
@@ -506,6 +573,26 @@ function App() {
                   💾 保存
                 </button>
               </div>
+              {/* 续写确认条 */}
+              {continuationPending && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "6px 12px", background: "#fef7e0", borderBottom: "1px solid #f9ab00",
+                  fontSize: 12,
+                }}>
+                  <span style={{ color: "#e37400", flex: 1 }}>
+                    AI 续写了内容（约 {continuationPending.length} 字符）💰 ${continuationCost.toFixed(4)}
+                  </span>
+                  <button onClick={handleAcceptContinuation}
+                    style={{ padding: "3px 10px", fontSize: 12, border: "none", borderRadius: 3, background: "#34a853", color: "#fff", cursor: "pointer" }}>
+                    ✅ 接受
+                  </button>
+                  <button onClick={handleRejectContinuation}
+                    style={{ padding: "3px 10px", fontSize: 12, border: "1px solid #e74c3c", borderRadius: 3, background: "#fff", color: "#e74c3c", cursor: "pointer" }}>
+                    ❌ 拒绝
+                  </button>
+                </div>
+              )}
 
               {selectedProject && !selectedChapter && !projectContext ? (
                 /* 引导提示：项目无章节且无创作上下文 */

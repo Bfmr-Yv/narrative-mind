@@ -6,12 +6,14 @@
 
 pub mod commands;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
 use tauri::Emitter;
 use std::sync::Arc;
 use xmgl_agent::AgentRegistry;
 use xmgl_core::{LlmClient, TextRange};
 use xmgl_llm::LlmClientImpl;
-use xmgl_orchestrator::{AnalysisObserver, Orchestrator};
+use xmgl_orchestrator::{AnalysisObserver, GoldenThreeState, Orchestrator};
 use xmgl_project::ProjectManager;
 
 // =========================================================================
@@ -27,6 +29,8 @@ pub struct AppState {
     pub llm_client: Arc<dyn LlmClient>,
     pub agent_registry: AgentRegistry,
     pub orchestrator: Orchestrator,
+    /// Phase D: 黄金三章生成会话
+    pub golden_three_sessions: Mutex<HashMap<String, GoldenThreeState>>,
 }
 
 impl AppState {
@@ -44,6 +48,7 @@ impl AppState {
             llm_client,
             agent_registry: AgentRegistry::with_all_agents(),
             orchestrator: Orchestrator::new(),
+            golden_three_sessions: Mutex::new(HashMap::new()),
         })
     }
 
