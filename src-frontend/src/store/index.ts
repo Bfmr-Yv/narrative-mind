@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type {
   ProjectMeta, ChapterData, AgentId, Character, Location,
-  ForeshadowEntry, TimelineEvent,
+  ForeshadowEntry, TimelineEvent, ProjectContext,
 } from "../types";
 import type { AnalysisOutput } from "../api";
 import * as api from "../api";
@@ -95,6 +95,7 @@ export interface AppState {
   foreshadows: ForeshadowEntry[];
   timeline: TimelineEvent[];
   settings: [string, string][];  // project_settings key-value pairs
+  projectContext: ProjectContext | null;
   selectedEntity: { type: "character" | "location" | "foreshadow" | "setting"; id: string } | null;
   editingEntity: boolean;
   loadCharacters: () => Promise<void>;
@@ -113,6 +114,8 @@ export interface AppState {
   deleteForeshadow: (id: string) => Promise<void>;
   setProjectSetting: (key: string, value: string) => Promise<void>;
   deleteProjectSetting: (key: string) => Promise<void>;
+  loadProjectContext: () => Promise<void>;
+  saveProjectContext: (context: ProjectContext, expectedVersion?: number) => Promise<void>;
   selectEntity: (type: "character" | "location" | "foreshadow" | "setting", id: string) => void;
   setEditing: (editing: boolean) => void;
   clearSelection: () => void;
@@ -256,6 +259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   foreshadows: [],
   timeline: [],
   settings: [],
+  projectContext: null,
   selectedEntity: null,
   editingEntity: false,
 
@@ -364,6 +368,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!currentProject) return;
     await entitiesApi.deleteProjectSetting(currentProject.id, key);
     await get().loadSettings();
+  },
+
+  loadProjectContext: async () => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    try {
+      const ctx = await entitiesApi.getProjectContext(currentProject.id);
+      set({ projectContext: ctx });
+    } catch {
+      set({ projectContext: null });
+    }
+  },
+
+  saveProjectContext: async (context: ProjectContext, expectedVersion?: number) => {
+    const saved = await entitiesApi.saveProjectContext(context, expectedVersion);
+    set({ projectContext: saved });
   },
 
   selectEntity: (type, id) => set({ selectedEntity: { type, id }, editingEntity: false }),

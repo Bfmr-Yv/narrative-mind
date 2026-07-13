@@ -46,6 +46,10 @@ fn main() {
             commands::list_project_settings,
             commands::set_project_setting,
             commands::delete_project_setting,
+            // Phase A: ProjectContext
+            commands::get_project_context,
+            commands::save_project_context,
+            commands::run_full_analysis,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Tauri 应用");

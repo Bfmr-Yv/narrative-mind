@@ -7,7 +7,7 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
-use xmgl_core::{AgentId, CoreResult, LLMUsage, LlmClient, ModelTier, TaskType};
+use xmgl_core::{AgentId, CoreResult, LLMUsage, LlmClient, ModelTier, ProjectContext, TaskType};
 
 // =========================================================================
 // SharedContext — Agent 间共享上下文
@@ -73,6 +73,117 @@ impl SharedContext {
     pub fn get_output(&self, agent_id: AgentId) -> Option<&str> {
         self.outputs.get(&agent_id).map(|s| s.as_str())
     }
+
+    /// 从 ProjectContext 注入创作上下文到 metadata。
+    ///
+    /// 将 ProjectContext 各 section 序列化为字符串，写入 `self.metadata`。
+    /// 使用 `entry().or_insert()` 确保不覆盖已有值（用户手动传入的 metadata 优先）。
+    /// 空 section 不写入。
+    pub fn enrich_with_project_context(&mut self, pctx: &ProjectContext) {
+        // world_rules — 拼接所有字段
+        if let Some(ref wr) = pctx.world_rules {
+            let mut parts = Vec::new();
+            if !wr.magic_system.is_empty() {
+                parts.push(format!("力量体系: {}", wr.magic_system));
+            }
+            if !wr.technology_level.is_empty() {
+                parts.push(format!("技术水平: {}", wr.technology_level));
+            }
+            if !wr.social_structure.is_empty() {
+                parts.push(format!("社会结构: {}", wr.social_structure));
+            }
+            if !wr.geography.is_empty() {
+                parts.push(format!("地理: {}", wr.geography));
+            }
+            for rule in &wr.custom_rules {
+                parts.push(format!("自定义规则: {}", rule));
+            }
+            if !parts.is_empty() {
+                self.metadata
+                    .entry("world_rules".into())
+                    .or_insert(parts.join("\n"));
+            }
+        }
+
+        // character_profiles — JSON 数组字符串
+        if !pctx.character_profiles.is_empty() {
+            let json = serde_json::to_string(&pctx.character_profiles).unwrap_or_default();
+            self.metadata
+                .entry("character_profiles".into())
+                .or_insert(json);
+        }
+
+        // plot_outline
+        if let Some(ref po) = pctx.plot_outline {
+            let mut parts = Vec::new();
+            if !po.main_plot.is_empty() {
+                parts.push(format!("主线: {}", po.main_plot));
+            }
+            for sub in &po.subplots {
+                parts.push(format!("支线: {}", sub));
+            }
+            for fs in &po.foreshadow_plan {
+                parts.push(format!("伏笔规划: {}", fs));
+            }
+            for co in &po.chapter_outlines {
+                parts.push(format!(
+                    "第{}章: {} | 关键事件: {}",
+                    co.chapter_index,
+                    co.summary,
+                    co.key_events.join("、")
+                ));
+            }
+            if !parts.is_empty() {
+                self.metadata
+                    .entry("plot_outline".into())
+                    .or_insert(parts.join("\n"));
+            }
+        }
+
+        // style_guide
+        if let Some(ref sg) = pctx.style_guide {
+            let mut parts = Vec::new();
+            if !sg.prose_style.is_empty() {
+                parts.push(format!("文体风格: {}", sg.prose_style));
+            }
+            if !sg.sentence_preferences.is_empty() {
+                parts.push(format!("句式偏好: {}", sg.sentence_preferences));
+            }
+            if !sg.dialogue_conventions.is_empty() {
+                parts.push(format!("对话惯例: {}", sg.dialogue_conventions));
+            }
+            if !sg.narrative_distance.is_empty() {
+                parts.push(format!("叙事距离: {}", sg.narrative_distance));
+            }
+            if !parts.is_empty() {
+                self.metadata
+                    .entry("style_guide".into())
+                    .or_insert(parts.join("\n"));
+            }
+        }
+
+        // theme_map
+        if let Some(ref tm) = pctx.theme_map {
+            // theme_keywords — 主要主题
+            if !tm.primary_themes.is_empty() {
+                self.metadata
+                    .entry("theme_keywords".into())
+                    .or_insert(tm.primary_themes.join(", "));
+            }
+            // genre — 第一个主题作为体裁标签
+            if let Some(first_theme) = tm.primary_themes.first() {
+                self.metadata
+                    .entry("genre".into())
+                    .or_insert(first_theme.clone());
+            }
+            // imagery_keywords — 意象母题
+            if !tm.imagery_motifs.is_empty() {
+                self.metadata
+                    .entry("imagery_keywords".into())
+                    .or_insert(tm.imagery_motifs.join(", "));
+            }
+        }
+    }
 }
 
 // =========================================================================
@@ -93,6 +204,23 @@ pub trait Agent: Send + Sync {
     /// 该 Agent 使用的模型级别。
     fn model_tier(&self) -> ModelTier;
 
+    /// 核心路由：根据 TaskType 返回对应的 prompt key。
+    ///
+    /// 一个 Agent 可以处理多种 TaskType，每种对应不同的 system prompt。
+    /// 这解决了 17 个 prompt 模板中 7 个死代码的问题（TG 3b）。
+    fn prompt_key_for(&self, task_type: TaskType) -> &'static str;
+
+    /// 每个 Agent 的默认分析维度。
+    fn default_task_type(&self) -> TaskType;
+
+    /// 默认 prompt key（向后兼容）。
+    fn default_prompt_key(&self) -> &'static str;
+
+    /// Agent 使用的 prompt key（委托给 `default_prompt_key()`）。
+    fn prompt_key(&self) -> &'static str {
+        self.default_prompt_key()
+    }
+
     /// 执行分析。
     ///
     /// `ctx` 包含当前项目/章节信息及前序 Agent 产出。
@@ -102,9 +230,6 @@ pub trait Agent: Send + Sync {
     async fn analyze(
         &self, ctx: &SharedContext, llm: Arc<dyn LlmClient>, task_type: TaskType,
     ) -> CoreResult<(String, Option<LLMUsage>)>;
-
-    /// Agent 使用的 prompt key（对应 Python 注册表）。
-    fn prompt_key(&self) -> &'static str;
 
     /// 构造 prompt 模板变量。
     fn build_variables(&self, ctx: &SharedContext) -> HashMap<String, String>;
@@ -205,7 +330,10 @@ fn collect_prior_outputs(ctx: &SharedContext) -> String {
 // =========================================================================
 
 macro_rules! agent_impl {
-    ($name:ident, $id:expr, $display:expr, $tier:expr, $prompt_key:expr, |$ctx:ident| $body:expr) => {
+    ($name:ident, $id:expr, $display:expr, $tier:expr,
+     $default_task_type:expr, $default_prompt_key:expr,
+     |$tt:ident| $route_body:expr,
+     |$ctx:ident| $body:expr) => {
         pub struct $name;
 
         #[async_trait]
@@ -222,8 +350,16 @@ macro_rules! agent_impl {
                 $tier
             }
 
-            fn prompt_key(&self) -> &'static str {
-                $prompt_key
+            fn default_task_type(&self) -> TaskType {
+                $default_task_type
+            }
+
+            fn default_prompt_key(&self) -> &'static str {
+                $default_prompt_key
+            }
+
+            fn prompt_key_for(&self, $tt: TaskType) -> &'static str {
+                $route_body
             }
 
             fn build_variables(&self, $ctx: &SharedContext) -> HashMap<String, String> {
@@ -238,7 +374,7 @@ macro_rules! agent_impl {
             ) -> CoreResult<(String, Option<LLMUsage>)> {
                 let vars = self.build_variables(ctx);
                 let response = llm
-                    .call_agent(self.prompt_key(), &vars, task_type)
+                    .call_agent(self.prompt_key_for(task_type), &vars, task_type)
                     .await?;
                 if response.success {
                     let output = response
@@ -257,7 +393,15 @@ macro_rules! agent_impl {
 }
 
 // ── CharacterAgent: PAD 情感计算 + 角色分析 ──
-agent_impl!(CharacterAgent, AgentId::Character, "角色 Agent", ModelTier::Pro, "pad_compute", |ctx| {
+agent_impl!(CharacterAgent, AgentId::Character, "角色 Agent", ModelTier::Pro,
+    TaskType::PadCompute, "pad_compute",
+    |tt| match tt {
+        TaskType::PadCompute => "pad_compute",
+        TaskType::ActionInfer => "action_infer",
+        TaskType::EntityExtract => "entity_extract",
+        _ => "pad_compute",
+    },
+    |ctx| {
     let mut vars = HashMap::new();
     // 注意：format_pad_prompt 读取 "scene_text"，不是 "chapter_text"
     vars.insert("scene_text".into(), ctx.chapter_text.clone());
@@ -283,7 +427,14 @@ agent_impl!(CharacterAgent, AgentId::Character, "角色 Agent", ModelTier::Pro, 
 });
 
 // ── WorldAgent: 世界规则 + 空间检查 ──
-agent_impl!(WorldAgent, AgentId::World, "世界 Agent", ModelTier::Flash, "rule_check", |ctx| {
+agent_impl!(WorldAgent, AgentId::World, "世界 Agent", ModelTier::Flash,
+    TaskType::RuleCheck, "rule_check",
+    |tt| match tt {
+        TaskType::RuleCheck => "rule_check",
+        TaskType::SpatialCheck => "spatial_check",
+        _ => "rule_check",
+    },
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     if let Some(rules) = ctx.metadata.get("world_rules") {
@@ -293,7 +444,16 @@ agent_impl!(WorldAgent, AgentId::World, "世界 Agent", ModelTier::Flash, "rule_
 });
 
 // ── NarrativeAgent: 叙事分析 + 伏笔检测 ──
-agent_impl!(NarrativeAgent, AgentId::Narrative, "叙事 Agent", ModelTier::Pro, "foreshadow_detect", |ctx| {
+agent_impl!(NarrativeAgent, AgentId::Narrative, "叙事 Agent", ModelTier::Pro,
+    TaskType::ForeshadowDetect, "foreshadow_detect",
+    |tt| match tt {
+        TaskType::ForeshadowDetect => "foreshadow_detect",
+        TaskType::CausalExtract => "causal_extract",
+        TaskType::ResolutionCheck => "resolution_check",
+        TaskType::EventPredict => "event_predict",
+        _ => "foreshadow_detect",
+    },
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     if let Some(outline) = ctx.metadata.get("plot_outline") {
@@ -306,7 +466,14 @@ agent_impl!(NarrativeAgent, AgentId::Narrative, "叙事 Agent", ModelTier::Pro, 
 });
 
 // ── ProseAgent: 文体检查 + 寄存器检查 ──
-agent_impl!(ProseAgent, AgentId::Prose, "文辞 Agent", ModelTier::Flash, "style_check", |ctx| {
+agent_impl!(ProseAgent, AgentId::Prose, "文辞 Agent", ModelTier::Flash,
+    TaskType::StyleCheck, "style_check",
+    |tt| match tt {
+        TaskType::StyleCheck => "style_check",
+        TaskType::RegisterCheck => "register_check",
+        _ => "style_check",
+    },
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     if let Some(guide) = ctx.metadata.get("style_guide") {
@@ -316,7 +483,10 @@ agent_impl!(ProseAgent, AgentId::Prose, "文辞 Agent", ModelTier::Flash, "style
 });
 
 // ── ThemeAgent: 主题提取 ──
-agent_impl!(ThemeAgent, AgentId::Theme, "主题 Agent", ModelTier::Pro, "theme_extract", |ctx| {
+agent_impl!(ThemeAgent, AgentId::Theme, "主题 Agent", ModelTier::Pro,
+    TaskType::ThemeExtract, "theme_extract",
+    |_tt| "theme_extract",
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     if let Some(keywords) = ctx.metadata.get("theme_keywords") {
@@ -326,7 +496,10 @@ agent_impl!(ThemeAgent, AgentId::Theme, "主题 Agent", ModelTier::Pro, "theme_e
 });
 
 // ── EconomyAgent: 经济性检查 ──
-agent_impl!(EconomyAgent, AgentId::Economy, "经济 Agent", ModelTier::Flash, "economy_check", |ctx| {
+agent_impl!(EconomyAgent, AgentId::Economy, "经济 Agent", ModelTier::Flash,
+    TaskType::EconomyCheck, "economy_check",
+    |_tt| "economy_check",
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     vars.insert("word_count".into(), ctx.chapter_text.len().to_string());
@@ -334,7 +507,10 @@ agent_impl!(EconomyAgent, AgentId::Economy, "经济 Agent", ModelTier::Flash, "e
 });
 
 // ── ReaderExpectationAgent: 读者预期分析 ──
-agent_impl!(ReaderExpectationAgent, AgentId::ReaderExpectation, "预期 Agent", ModelTier::Flash, "expectation_analyze", |ctx| {
+agent_impl!(ReaderExpectationAgent, AgentId::ReaderExpectation, "预期 Agent", ModelTier::Flash,
+    TaskType::ExpectationAnalyze, "expectation_analyze",
+    |_tt| "expectation_analyze",
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     if let Some(genre) = ctx.metadata.get("genre") {
@@ -344,7 +520,10 @@ agent_impl!(ReaderExpectationAgent, AgentId::ReaderExpectation, "预期 Agent", 
 });
 
 // ── ConceptionAgent: 意象检测 ──
-agent_impl!(ConceptionAgent, AgentId::Conception, "构思 Agent", ModelTier::Flash, "imagery_detect", |ctx| {
+agent_impl!(ConceptionAgent, AgentId::Conception, "构思 Agent", ModelTier::Flash,
+    TaskType::ImageryDetect, "imagery_detect",
+    |_tt| "imagery_detect",
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     if let Some(keywords) = ctx.metadata.get("imagery_keywords") {
@@ -354,7 +533,14 @@ agent_impl!(ConceptionAgent, AgentId::Conception, "构思 Agent", ModelTier::Fla
 });
 
 // ── EditorInChiefAgent: 总编 — 汇总所有前序输出 ──
-agent_impl!(EditorInChiefAgent, AgentId::EditorInChief, "总编 Agent", ModelTier::Pro, "scene_analysis", |ctx| {
+agent_impl!(EditorInChiefAgent, AgentId::EditorInChief, "总编 Agent", ModelTier::Pro,
+    TaskType::SceneAnalysis, "scene_analysis",
+    |tt| match tt {
+        TaskType::SceneAnalysis => "scene_analysis",
+        TaskType::Rerank => "rerank",
+        _ => "scene_analysis",
+    },
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     let prior = collect_prior_outputs(ctx);
@@ -363,7 +549,10 @@ agent_impl!(EditorInChiefAgent, AgentId::EditorInChief, "总编 Agent", ModelTie
 });
 
 // ── EntityExtractAgent: 实体提取 — Phase L1 ──
-agent_impl!(EntityExtractAgent, AgentId::EntityExtract, "实体提取 Agent", ModelTier::Flash, "entity_extract", |ctx| {
+agent_impl!(EntityExtractAgent, AgentId::EntityExtract, "实体提取 Agent", ModelTier::Flash,
+    TaskType::EntityExtract, "entity_extract",
+    |_tt| "entity_extract",
+    |ctx| {
     let mut vars = HashMap::new();
     vars.insert("chapter_text".into(), ctx.chapter_text.clone());
     if let Some(ref title) = ctx.chapter_title {

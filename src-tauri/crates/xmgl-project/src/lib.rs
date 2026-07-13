@@ -5,7 +5,7 @@
 use chrono::Utc;
 use rusqlite::Connection;
 use uuid::Uuid;
-use xmgl_core::{ChapterData, CoreError, CoreResult, ProjectMeta};
+use xmgl_core::{ChapterData, CoreError, CoreResult, ProjectContext, ProjectMeta};
 
 // =========================================================================
 // MigrationReport
@@ -205,6 +205,28 @@ impl ProjectManager {
 
         xmgl_memory::update_project(&conn, &meta)?;
         Ok(())
+    }
+
+    // ── ProjectContext ──
+
+    /// 获取项目创作上下文。
+    ///
+    /// 如果项目尚无上下文记录，自动创建默认上下文并返回。
+    pub fn get_project_context(&self, project_id: &str) -> CoreResult<Option<ProjectContext>> {
+        let conn = self.open()?;
+        xmgl_memory::get_project_context(&conn, project_id)
+    }
+
+    /// 保存项目创作上下文（乐观锁）。
+    ///
+    /// `expected_version`: 如果为 Some，先检查当前版本是否匹配。
+    pub fn save_project_context(
+        &self,
+        ctx: &ProjectContext,
+        expected_version: Option<u32>,
+    ) -> CoreResult<ProjectContext> {
+        let conn = self.open()?;
+        xmgl_memory::upsert_project_context(&conn, ctx, expected_version)
     }
 
     // ── 旧数据迁移 ──

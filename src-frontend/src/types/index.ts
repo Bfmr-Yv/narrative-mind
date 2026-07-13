@@ -275,3 +275,67 @@ export interface TimelineEvent {
   related_entities: string[];
   sort_order: number;
 }
+
+// =========================================================================
+// Phase A: ProjectContext — 类型化创作上下文
+// =========================================================================
+
+export interface ProjectContext {
+  project_id: string;
+  context_version: number;
+  updated_at: string;
+  world_rules: WorldRules | null;
+  character_profiles: CharacterProfile[];
+  plot_outline: PlotOutline | null;
+  style_guide: StyleGuide | null;
+  theme_map: ThemeMap | null;
+}
+
+export interface WorldRules {
+  magic_system: string;
+  technology_level: string;
+  social_structure: string;
+  geography: string;
+  custom_rules: string[];
+}
+
+export interface CharacterProfile {
+  character_id: string;
+  name: string;
+  background: string;
+  personality: string;
+  goals: string[];
+  speech_patterns: string;
+}
+
+export interface PlotOutline {
+  main_plot: string;
+  subplots: string[];
+  foreshadow_plan: string[];
+  chapter_outlines: ChapterOutline[];
+}
+
+export interface ChapterOutline {
+  chapter_index: number;
+  summary: string;
+  key_events: string[];
+}
+
+export interface StyleGuide {
+  prose_style: string;
+  sentence_preferences: string;
+  dialogue_conventions: string;
+  narrative_distance: string;
+}
+
+export interface ThemeMap {
+  primary_themes: string[];
+  imagery_motifs: string[];
+  theme_arcs: ThemeArc[];
+}
+
+export interface ThemeArc {
+  theme: string;
+  current_stage: string;
+  planned_development: string;
+}

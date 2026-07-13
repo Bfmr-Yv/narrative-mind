@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tauri::State;
 use xmgl_core::{
     AgentFinding, ChapterData, Character, ForeshadowEntry, Location,
-    ProjectMeta, TaskType, TimelineEvent,
+    ProjectContext, ProjectMeta, TaskType, TimelineEvent,
 };
 use xmgl_agent::SharedContext;
 use xmgl_orchestrator::{AnalysisRequest, AnalysisTrigger};
@@ -140,6 +140,17 @@ pub async fn run_analysis(
     let mut ctx = SharedContext::new(&chapter.project_id, &chapter.text)
         .with_chapter(&chapter_id);
 
+    // 2a. 注入 ProjectContext（失败不阻塞分析）
+    match state.project_manager.get_project_context(&chapter.project_id) {
+        Ok(Some(pctx)) => {
+            ctx.enrich_with_project_context(&pctx);
+        }
+        Ok(None) => { /* 项目尚无创作上下文，跳过 */ }
+        Err(e) => {
+            eprintln!("[run_analysis] 加载 ProjectContext 失败: {e}");
+        }
+    }
+
     // 3. 构建请求
     let tt: TaskType = task_type.parse().map_err(|e: String| e)?;
     let request = AnalysisRequest {
@@ -204,6 +215,88 @@ pub async fn run_analysis(
         agent_outputs,
         topology,
         complexity,
+        findings: result.findings,
+        total_cost_usd: result.total_cost_usd,
+        total_latency_ms: wall_clock_ms,
+        extracted_characters: result.extracted_characters,
+        extracted_locations: result.extracted_locations,
+    })
+}
+
+/// 全维度并行分析 — 一键调度全部 10 个 Agent。
+///
+/// 每个 Agent 使用自己的主 TaskType，通过 `prompt_key_for()` 路由到对应 prompt。
+/// 分析结果、成本日志、事件推送逻辑与 `run_analysis` 一致。
+#[tauri::command]
+pub async fn run_full_analysis(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    chapter_id: String,
+) -> Result<AnalysisOutput, String> {
+    // 1. 加载章节
+    let chapter = state
+        .project_manager
+        .get_chapter(&chapter_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("chapter not found: {chapter_id}"))?;
+
+    // 2. 构建上下文 + 注入 ProjectContext
+    let mut ctx = SharedContext::new(&chapter.project_id, &chapter.text)
+        .with_chapter(&chapter_id);
+    match state.project_manager.get_project_context(&chapter.project_id) {
+        Ok(Some(pctx)) => {
+            ctx.enrich_with_project_context(&pctx);
+        }
+        Ok(None) => {}
+        Err(e) => {
+            eprintln!("[run_full_analysis] 加载 ProjectContext 失败: {e}");
+        }
+    }
+
+    // 3. 构造 observer
+    let observer = TauriAnalysisObserver {
+        app_handle: app_handle.clone(),
+    };
+
+    // 4. 执行全维度并行分析
+    let start = std::time::Instant::now();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let result = state
+        .orchestrator
+        .run_full_parallel(&mut ctx, &state.agent_registry, Arc::clone(&state.llm_client), Some(&observer))
+        .await
+        .map_err(|e| e.to_string())?;
+    let wall_clock_ms = start.elapsed().as_millis() as u64;
+
+    // 5. 写成本日志
+    for (agent_id, usage) in &result.usages {
+        let _ = state.log_cost_entry(
+            &format!("{agent_id:?}"),
+            agent_id.as_task_type_str(),
+            &usage.model,
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cost_usd,
+            usage.latency_ms,
+        );
+    }
+
+    // 6. 转换输出
+    let agent_outputs = result
+        .agent_outputs
+        .iter()
+        .map(|(id, output)| AgentOutput {
+            agent_id: format!("{id:?}"),
+            agent_name: id.name().to_string(),
+            output: output.clone(),
+        })
+        .collect();
+
+    Ok(AnalysisOutput {
+        request_id,
+        agent_outputs,
+        topology: "Parallel(10)".into(),
+        complexity: "FullScene".into(),
         findings: result.findings,
         total_cost_usd: result.total_cost_usd,
         total_latency_ms: wall_clock_ms,
@@ -390,6 +483,31 @@ pub fn delete_project_setting(
 ) -> Result<(), String> {
     let conn = open_db(&state)?;
     xmgl_memory::delete_project_setting(&conn, &project_id, &key).map_err(|e| e.to_string())
+}
+
+// ── ProjectContext ──
+
+#[tauri::command]
+pub fn get_project_context(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Option<ProjectContext>, String> {
+    state
+        .project_manager
+        .get_project_context(&project_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_project_context(
+    state: State<'_, AppState>,
+    context: ProjectContext,
+    expected_version: Option<u32>,
+) -> Result<ProjectContext, String> {
+    state
+        .project_manager
+        .save_project_context(&context, expected_version)
+        .map_err(|e| e.to_string())
 }
 
 // ── 时间线（只读） ──

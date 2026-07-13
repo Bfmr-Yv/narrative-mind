@@ -46,3 +46,20 @@ export async function runAnalysis(
     taskType,
   });
 }
+
+/**
+ * 全维度并行分析 — 一键调度全部 10 个 Agent。
+ *
+ * 每个 Agent 使用自己的主 TaskType，自动注入 ProjectContext。
+ * 适用于章节完成后的全面审查。
+ *
+ * @param chapterId - 章节 UUID
+ * @returns 分析结果
+ */
+export async function runFullAnalysis(
+  chapterId: string,
+): Promise<AnalysisOutput> {
+  return invoke<AnalysisOutput>("run_full_analysis", {
+    chapterId,
+  });
+}

@@ -260,6 +260,106 @@ pub struct ChapterData {
 }
 
 // =========================================================================
+// Phase A: ProjectContext — 类型化创作上下文
+// =========================================================================
+
+/// 项目级别的创作上下文。
+///
+/// 替代旧的 ad-hoc key-value project_settings，
+/// 提供类型化的世界观规则、角色档案、情节大纲、风格指南、主题映射。
+/// 支持乐观锁版本控制。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProjectContext {
+    pub project_id: String,
+    pub context_version: u32,
+    pub updated_at: String,
+    pub world_rules: Option<WorldRules>,
+    pub character_profiles: Vec<CharacterProfile>,
+    pub plot_outline: Option<PlotOutline>,
+    pub style_guide: Option<StyleGuide>,
+    pub theme_map: Option<ThemeMap>,
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for ProjectContext {
+    fn default() -> Self {
+        Self {
+            project_id: String::new(),
+            context_version: 1,
+            updated_at: String::new(),
+            world_rules: None,
+            character_profiles: Vec::new(),
+            plot_outline: None,
+            style_guide: None,
+            theme_map: None,
+        }
+    }
+}
+
+/// 世界观规则 — 故事世界的基本法则。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct WorldRules {
+    pub magic_system: String,
+    pub technology_level: String,
+    pub social_structure: String,
+    pub geography: String,
+    pub custom_rules: Vec<String>,
+}
+
+/// 角色档案 — 单个角色的创作信息。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct CharacterProfile {
+    pub character_id: String,
+    pub name: String,
+    pub background: String,
+    pub personality: String,
+    pub goals: Vec<String>,
+    pub speech_patterns: String,
+}
+
+/// 情节大纲 — 主线 + 支线 + 伏笔规划。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct PlotOutline {
+    pub main_plot: String,
+    pub subplots: Vec<String>,
+    pub foreshadow_plan: Vec<String>,
+    pub chapter_outlines: Vec<ChapterOutline>,
+}
+
+/// 章节大纲 — 单章的概要信息。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ChapterOutline {
+    pub chapter_index: u32,
+    pub summary: String,
+    pub key_events: Vec<String>,
+}
+
+/// 风格指南 — 文辞 Agent 的参考标准。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct StyleGuide {
+    pub prose_style: String,
+    pub sentence_preferences: String,
+    pub dialogue_conventions: String,
+    pub narrative_distance: String,
+}
+
+/// 主题映射 — 主要主题 + 意象母题 + 主题弧。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ThemeMap {
+    pub primary_themes: Vec<String>,
+    pub imagery_motifs: Vec<String>,
+    pub theme_arcs: Vec<ThemeArc>,
+}
+
+/// 主题弧 — 单个主题的发展轨迹。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ThemeArc {
+    pub theme: String,
+    pub current_stage: String,
+    pub planned_development: String,
+}
+
+// =========================================================================
 // Phase L1: 实体类型（角色、地点、伏笔、时间线）
 // =========================================================================
 
@@ -425,6 +525,9 @@ pub enum CoreError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Version conflict: expected version {expected}, found {found}")]
+    VersionConflict { expected: u32, found: u32 },
 }
 
 /// `Result` alias，以 CoreError 为默认错误类型。

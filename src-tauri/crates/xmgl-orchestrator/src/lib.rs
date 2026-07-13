@@ -3,6 +3,7 @@
 //! Phase B: 定义调度类型与枚举，骨架 Orchestrator。
 //! Phase C: 填充复杂度预判、拓扑选择、Hermes Council 协议实现。
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use xmgl_core::{
     AgentFinding, AgentId, Character, CharacterStatus, CoreResult, LLMUsage, LlmClient, Location,
@@ -588,7 +589,7 @@ async fn run_serial(
     ctx: &mut SharedContext,
     registry: &AgentRegistry,
     llm: Arc<dyn LlmClient>,
-    task_type: TaskType,
+    agent_task_types: &HashMap<AgentId, TaskType>,
     observer: Option<&dyn AnalysisObserver>,
 ) -> (Vec<(AgentId, String)>, Vec<(AgentId, LLMUsage)>, u32) {
     let total = agent_ids.len() as f64;
@@ -599,6 +600,11 @@ async fn run_serial(
     for (idx, agent_id) in agent_ids.iter().enumerate() {
         if let Some(agent) = registry.get(*agent_id) {
             if agent.enabled() {
+                let task_type = agent_task_types
+                    .get(agent_id)
+                    .copied()
+                    .unwrap_or_else(|| Orchestrator::task_type_for_agent(agent_id));
+
                 if let Some(obs) = observer {
                     obs.on_agent_start(
                         &format!("{:?}", agent_id),
@@ -642,7 +648,7 @@ async fn run_parallel(
     ctx: &SharedContext,
     registry: &AgentRegistry,
     llm: Arc<dyn LlmClient>,
-    task_type: TaskType,
+    agent_task_types: &HashMap<AgentId, TaskType>,
     observer: Option<&dyn AnalysisObserver>,
 ) -> (Vec<(AgentId, String)>, Vec<(AgentId, LLMUsage)>, u32) {
     let total = agent_ids.len() as f64;
@@ -670,6 +676,11 @@ async fn run_parallel(
             let llm = Arc::clone(&llm);
             let ctx = ctx.clone();
             let done_pct = ((idx + 1) as f64 / total) * 100.0;
+            // Capture per-agent task type for the spawned task
+            let task_type = agent_task_types
+                .get(&agent_id)
+                .copied()
+                .unwrap_or_else(|| Orchestrator::task_type_for_agent(&agent_id));
 
             handles.push(tokio::spawn(async move {
                 let result = agent.analyze(&ctx, llm, task_type).await;
@@ -770,6 +781,25 @@ impl Orchestrator {
             max_upgrade_rounds: 2,
             enable_reflection: true,
             max_reflection_rounds: 2,
+        }
+    }
+
+    /// 返回每个 AgentId 对应的主 TaskType。
+    ///
+    /// 用于并行调度时，每个 Agent 拿到自己的 TaskType，
+    /// 从而让 `prompt_key_for()` 路由到正确的 system prompt。
+    pub fn task_type_for_agent(agent_id: &AgentId) -> TaskType {
+        match agent_id {
+            AgentId::Character => TaskType::PadCompute,
+            AgentId::World => TaskType::RuleCheck,
+            AgentId::Narrative => TaskType::ForeshadowDetect,
+            AgentId::Prose => TaskType::StyleCheck,
+            AgentId::Theme => TaskType::ThemeExtract,
+            AgentId::Economy => TaskType::EconomyCheck,
+            AgentId::ReaderExpectation => TaskType::ExpectationAnalyze,
+            AgentId::Conception => TaskType::ImageryDetect,
+            AgentId::EditorInChief => TaskType::SceneAnalysis,
+            AgentId::EntityExtract => TaskType::EntityExtract,
         }
     }
 
@@ -970,6 +1000,93 @@ impl Orchestrator {
         }
     }
 
+    /// 全维度并行分析：调度全部 10 个 Agent，每个用其主 TaskType。
+    ///
+    /// 用于"一键全面分析"模式——并行执行所有 Agent，
+    /// 解析 findings、entity 并返回聚合结果。
+    pub async fn run_full_parallel(
+        &self,
+        ctx: &mut SharedContext,
+        registry: &AgentRegistry,
+        llm: Arc<dyn LlmClient>,
+        observer: Option<&dyn AnalysisObserver>,
+    ) -> CoreResult<AnalysisResult> {
+        let all_agents = AgentId::all();
+        let agent_task_types: HashMap<AgentId, TaskType> = all_agents
+            .iter()
+            .map(|id| (*id, Self::task_type_for_agent(id)))
+            .collect();
+
+        let (outputs, usages, _success_count) = run_parallel(
+            &all_agents,
+            ctx,
+            registry,
+            Arc::clone(&llm),
+            &agent_task_types,
+            observer,
+        )
+        .await;
+
+        // 回写 ctx
+        for (id, ref output) in &outputs {
+            ctx.record_output(*id, output.clone());
+        }
+
+        let findings = parse_findings(&outputs, &ctx.chapter_text);
+        let total_cost_usd = usages.iter().map(|(_, u)| u.cost_usd).sum();
+        let total_latency_ms = usages.iter().map(|(_, u)| u.latency_ms as u64).sum();
+
+        if let Some(obs) = observer {
+            obs.on_analysis_complete(
+                "",
+                total_cost_usd,
+                total_latency_ms,
+                all_agents.len() as u32,
+                findings.len() as u32,
+            );
+            for f in &findings {
+                if let Some(ref suggestion) = f.suggestion {
+                    obs.on_proposal_ready(
+                        &uuid::Uuid::new_v4().to_string(),
+                        &f.agent_id,
+                        &f.title,
+                        &format!("{:?}", f.severity),
+                        f.location,
+                        suggestion,
+                    );
+                }
+            }
+        }
+
+        let (extracted_characters, extracted_locations) =
+            extract_entities(&outputs, &ctx.project_id, ctx.chapter_id.as_deref());
+
+        Ok(AnalysisResult {
+            agent_outputs: outputs,
+            topology: AgentTopology::Parallel {
+                agents: &[
+                    AgentId::Character,
+                    AgentId::World,
+                    AgentId::Narrative,
+                    AgentId::Prose,
+                    AgentId::Theme,
+                    AgentId::Economy,
+                    AgentId::ReaderExpectation,
+                    AgentId::Conception,
+                    AgentId::EditorInChief,
+                    AgentId::EntityExtract,
+                ],
+            },
+            complexity: TaskComplexity::FullScene,
+            findings,
+            usages,
+            total_cost_usd,
+            total_latency_ms,
+            extracted_characters,
+            extracted_locations,
+        })
+    }
+
     /// 执行一次分析（HCP-MAD 渐进升级）。
     ///
     /// 流程：
@@ -992,17 +1109,24 @@ impl Orchestrator {
         let mut upgrade_round = 0;
 
         loop {
+            // 构建 per-agent task type map：每个 Agent 拿到自己的主 TaskType
+            let agent_task_types: HashMap<AgentId, TaskType> = topology
+                .agent_ids()
+                .into_iter()
+                .map(|id| (id, Orchestrator::task_type_for_agent(&id)))
+                .collect();
+
             // ── 按拓扑分派执行 ──
             let (outputs, usages, success_count) = match &topology {
                 AgentTopology::Single(id) => {
-                    run_serial(&[*id], ctx, registry, Arc::clone(&llm), request.task_type, observer).await
+                    run_serial(&[*id], ctx, registry, Arc::clone(&llm), &agent_task_types, observer).await
                 }
                 AgentTopology::Serial { agents } => {
-                    run_serial(agents, ctx, registry, Arc::clone(&llm), request.task_type, observer).await
+                    run_serial(agents, ctx, registry, Arc::clone(&llm), &agent_task_types, observer).await
                 }
                 AgentTopology::Parallel { agents } => {
                     let (outputs, usages, success_count) = run_parallel(
-                        agents, ctx, registry, Arc::clone(&llm), request.task_type, observer,
+                        agents, ctx, registry, Arc::clone(&llm), &agent_task_types, observer,
                     )
                     .await;
                     // 回写 ctx（升级轮次需要前序产出）
@@ -1014,7 +1138,7 @@ impl Orchestrator {
                 AgentTopology::HermesCouncil { analysts, chair } => {
                     // Phase 1: 并行分析 → Phase 2: Chair 串行综合
                     let (mut outputs, mut usages, success) = run_parallel(
-                        analysts, ctx, registry, Arc::clone(&llm), request.task_type, observer,
+                        analysts, ctx, registry, Arc::clone(&llm), &agent_task_types, observer,
                     )
                     .await;
                     // 记录 analyst 产出到 ctx
@@ -1023,7 +1147,7 @@ impl Orchestrator {
                     }
                     // Chair 综合
                     let (chair_outputs, chair_usages, chair_success) = run_serial(
-                        &[*chair], ctx, registry, Arc::clone(&llm), request.task_type, observer,
+                        &[*chair], ctx, registry, Arc::clone(&llm), &agent_task_types, observer,
                     )
                     .await;
                     outputs.extend(chair_outputs);

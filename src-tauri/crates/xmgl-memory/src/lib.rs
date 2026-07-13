@@ -4,11 +4,11 @@
 //! Phase C 追加: episodic_memory, causality_graph, foreshadowing_registry, permanent_memory.
 
 use chrono::Datelike;
-use rusqlite::{params, Connection, Result as SqlResult};
+use rusqlite::{params, Connection, OptionalExtension, Result as SqlResult};
 use xmgl_core::{
-    ChapterData, Character, CharacterRelation, CharacterStatus, CoreError, CoreResult,
-    ForeshadowEntry, ForeshadowStatus, Location, ProjectMeta, TimelineEvent,
-    TimelineEventType,
+    ChapterData, Character, CharacterRelation, CharacterStatus,
+    CoreError, CoreResult, ForeshadowEntry, ForeshadowStatus, Location,
+    ProjectContext, ProjectMeta, TimelineEvent, TimelineEventType,
 };
 
 // =========================================================================
@@ -203,9 +203,45 @@ pub fn run_migrations(conn: &Connection) -> CoreResult<()> {
             related_entities TEXT NOT NULL DEFAULT '[]',
             sort_order      INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS project_context (
+            project_id          TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+            context_version     INTEGER NOT NULL DEFAULT 1,
+            world_rules         TEXT,
+            character_profiles  TEXT NOT NULL DEFAULT '[]',
+            plot_outline        TEXT,
+            style_guide         TEXT,
+            theme_map           TEXT,
+            updated_at          TEXT NOT NULL
+        );
         ",
     )
-    .map_err(map_err)
+    .map_err(map_err)?;
+
+    // 安全迁移：analysis_history 新增 context_version 列（如果不存在）
+    migrate_add_context_version(conn)?;
+
+    Ok(())
+}
+
+/// 安全添加 context_version 列到 analysis_history（如果不存在）。
+fn migrate_add_context_version(conn: &Connection) -> CoreResult<()> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(analysis_history)")
+        .map_err(map_err)?;
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(map_err)?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !columns.iter().any(|c| c == "context_version") {
+        conn.execute_batch(
+            "ALTER TABLE analysis_history ADD COLUMN context_version INTEGER NOT NULL DEFAULT 0;",
+        )
+        .map_err(map_err)?;
+    }
+    Ok(())
 }
 
 // =========================================================================
@@ -486,6 +522,154 @@ pub fn total_words_for_project(conn: &Connection, project_id: &str) -> CoreResul
         )
         .map_err(map_err)?;
     Ok(total as u32)
+}
+
+// =========================================================================
+// ProjectContext CRUD
+// =========================================================================
+
+/// 读取项目的创作上下文。
+pub fn get_project_context(conn: &Connection, project_id: &str) -> CoreResult<Option<ProjectContext>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT project_id, context_version, world_rules, character_profiles,
+             plot_outline, style_guide, theme_map, updated_at
+             FROM project_context WHERE project_id = ?1",
+        )
+        .map_err(map_err)?;
+
+    let mut rows = stmt
+        .query_map(params![project_id], |row| {
+            let world_rules_str: Option<String> = row.get(2)?;
+            let character_profiles_str: String = row.get(3)?;
+            let plot_outline_str: Option<String> = row.get(4)?;
+            let style_guide_str: Option<String> = row.get(5)?;
+            let theme_map_str: Option<String> = row.get(6)?;
+
+            Ok(ProjectContext {
+                project_id: row.get(0)?,
+                context_version: row.get(1)?,
+                world_rules: world_rules_str
+                    .and_then(|s| serde_json::from_str(&s).ok()),
+                character_profiles: serde_json::from_str(&character_profiles_str)
+                    .unwrap_or_default(),
+                plot_outline: plot_outline_str
+                    .and_then(|s| serde_json::from_str(&s).ok()),
+                style_guide: style_guide_str
+                    .and_then(|s| serde_json::from_str(&s).ok()),
+                theme_map: theme_map_str
+                    .and_then(|s| serde_json::from_str(&s).ok()),
+                updated_at: row.get(7)?,
+            })
+        })
+        .map_err(map_err)?;
+
+    match rows.next() {
+        Some(Ok(ctx)) => Ok(Some(ctx)),
+        Some(Err(e)) => Err(map_err(e)),
+        None => Ok(None),
+    }
+}
+
+/// 写入或更新项目创作上下文（乐观锁）。
+///
+/// `expected_version`: 如果为 Some，先检查当前版本是否匹配；
+/// 不匹配返回 `CoreError::VersionConflict`。
+/// 写入时 context_version 自动 +1。
+pub fn upsert_project_context(
+    conn: &Connection,
+    ctx: &ProjectContext,
+    expected_version: Option<u32>,
+) -> CoreResult<ProjectContext> {
+    // 乐观锁检查
+    if let Some(expected) = expected_version {
+        let current_version: Option<u32> = conn
+            .query_row(
+                "SELECT context_version FROM project_context WHERE project_id = ?1",
+                params![ctx.project_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(map_err)?
+            .flatten();
+
+        if let Some(current) = current_version {
+            if current != expected {
+                return Err(CoreError::VersionConflict {
+                    expected,
+                    found: current,
+                });
+            }
+        }
+    }
+
+    let new_version = ctx.context_version + 1;
+    let updated_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let world_rules_json = ctx
+        .world_rules
+        .as_ref()
+        .map(|wr| serde_json::to_string(wr).unwrap_or_default());
+    let character_profiles_json =
+        serde_json::to_string(&ctx.character_profiles).unwrap_or_else(|_| "[]".into());
+    let plot_outline_json = ctx
+        .plot_outline
+        .as_ref()
+        .map(|po| serde_json::to_string(po).unwrap_or_default());
+    let style_guide_json = ctx
+        .style_guide
+        .as_ref()
+        .map(|sg| serde_json::to_string(sg).unwrap_or_default());
+    let theme_map_json = ctx
+        .theme_map
+        .as_ref()
+        .map(|tm| serde_json::to_string(tm).unwrap_or_default());
+
+    conn.execute(
+        "INSERT INTO project_context (project_id, context_version, world_rules,
+         character_profiles, plot_outline, style_guide, theme_map, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(project_id) DO UPDATE SET
+         context_version = ?2, world_rules = ?3, character_profiles = ?4,
+         plot_outline = ?5, style_guide = ?6, theme_map = ?7, updated_at = ?8",
+        params![
+            ctx.project_id,
+            new_version,
+            world_rules_json,
+            character_profiles_json,
+            plot_outline_json,
+            style_guide_json,
+            theme_map_json,
+            updated_at,
+        ],
+    )
+    .map_err(map_err)?;
+
+    Ok(ProjectContext {
+        project_id: ctx.project_id.clone(),
+        context_version: new_version,
+        updated_at,
+        world_rules: ctx.world_rules.clone(),
+        character_profiles: ctx.character_profiles.clone(),
+        plot_outline: ctx.plot_outline.clone(),
+        style_guide: ctx.style_guide.clone(),
+        theme_map: ctx.theme_map.clone(),
+    })
+}
+
+/// 确保项目有默认上下文行（INSERT OR IGNORE），然后返回。
+pub fn ensure_project_context(conn: &Connection, project_id: &str) -> CoreResult<ProjectContext> {
+    let updated_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    conn.execute(
+        "INSERT OR IGNORE INTO project_context (project_id, context_version,
+         character_profiles, updated_at)
+         VALUES (?1, 1, '[]', ?2)",
+        params![project_id, updated_at],
+    )
+    .map_err(map_err)?;
+
+    get_project_context(conn, project_id)?
+        .ok_or_else(|| CoreError::Internal("ensure_project_context: insert succeeded but get returned None".into()))
 }
 
 // =========================================================================

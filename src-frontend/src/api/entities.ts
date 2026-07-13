@@ -10,6 +10,7 @@ import type {
   CharacterRelation,
   ForeshadowEntry,
   Location,
+  ProjectContext,
   TimelineEvent,
 } from "../types";
 
@@ -97,4 +98,20 @@ export async function setProjectSetting(projectId: string, key: string, value: s
 
 export async function deleteProjectSetting(projectId: string, key: string): Promise<void> {
   return invoke<void>("delete_project_setting", { projectId, key });
+}
+
+// ── ProjectContext ──
+
+export async function getProjectContext(projectId: string): Promise<ProjectContext | null> {
+  return invoke<ProjectContext | null>("get_project_context", { projectId });
+}
+
+export async function saveProjectContext(
+  context: ProjectContext,
+  expectedVersion?: number,
+): Promise<ProjectContext> {
+  return invoke<ProjectContext>("save_project_context", {
+    context,
+    expectedVersion: expectedVersion ?? null,
+  });
 }
