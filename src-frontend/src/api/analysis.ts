@@ -5,7 +5,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentFinding, Character, Location } from "../types";
+import type { AgentFinding, Character, Location, ProjectContext } from "../types";
 
 export interface AgentOutput {
   agent_id: string;
@@ -61,5 +61,42 @@ export async function runFullAnalysis(
 ): Promise<AnalysisOutput> {
   return invoke<AnalysisOutput>("run_full_analysis", {
     chapterId,
+  });
+}
+
+/**
+ * AI 辅助填写 — 扩展 ProjectContext 的指定 section。
+ *
+ * @param section - section 名称 ("world_rules" | "character_profiles" | "plot_outline" | "style_guide" | "theme_map")
+ * @param currentJson - 当前已填内容的 JSON 字符串
+ * @param projectId - 项目 ID
+ * @returns 补充后的 JSON 字符串
+ */
+export async function expandContextSection(
+  section: string,
+  currentJson: string,
+  projectId: string,
+): Promise<string> {
+  return invoke<string>("expand_context_section", {
+    section,
+    currentJson,
+    projectId,
+  });
+}
+
+/**
+ * 导入分析 — 从已有小说文本提取创作上下文。
+ *
+ * @param text - 待分析的文本
+ * @param projectId - 项目 ID
+ * @returns 提取的 ProjectContext（不自动保存）
+ */
+export async function runImportAnalysis(
+  text: string,
+  projectId: string,
+): Promise<ProjectContext> {
+  return invoke<import("../types").ProjectContext>("run_import_analysis", {
+    text,
+    projectId,
   });
 }

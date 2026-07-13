@@ -6,8 +6,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use xmgl_core::{
-    AgentFinding, AgentId, Character, CharacterStatus, CoreResult, LLMUsage, LlmClient, Location,
-    Severity, TaskComplexity, TaskType, TextRange,
+    AgentFinding, AgentId, ChapterOutline, Character, CharacterProfile, CharacterStatus,
+    CoreResult, LLMUsage, LlmClient, Location, PlotOutline, ProjectContext,
+    Severity, StyleGuide, TaskComplexity, TaskType, TextRange, WorldRules,
 };
 use xmgl_agent::{AgentRegistry, SharedContext};
 
@@ -489,6 +490,10 @@ fn parse_agent_id(s: &str) -> Option<AgentId> {
         "Conception" => Some(AgentId::Conception),
         "EditorInChief" => Some(AgentId::EditorInChief),
         "EntityExtract" => Some(AgentId::EntityExtract),
+        "WorldRuleExtract" => Some(AgentId::WorldRuleExtract),
+        "CharacterProfileExtract" => Some(AgentId::CharacterProfileExtract),
+        "PlotStructureExtract" => Some(AgentId::PlotStructureExtract),
+        "StyleExtract" => Some(AgentId::StyleExtract),
         _ => None,
     }
 }
@@ -800,6 +805,10 @@ impl Orchestrator {
             AgentId::Conception => TaskType::ImageryDetect,
             AgentId::EditorInChief => TaskType::SceneAnalysis,
             AgentId::EntityExtract => TaskType::EntityExtract,
+            AgentId::WorldRuleExtract => TaskType::WorldRuleExtract,
+            AgentId::CharacterProfileExtract => TaskType::CharacterProfileExtract,
+            AgentId::PlotStructureExtract => TaskType::PlotStructureExtract,
+            AgentId::StyleExtract => TaskType::StyleExtract,
         }
     }
 
@@ -1297,6 +1306,269 @@ impl Orchestrator {
 impl Default for Orchestrator {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// =========================================================================
+// Phase B: 导入管线
+// =========================================================================
+
+/// 将文本按字符数分块，尽量在段落/行边界断开。
+///
+/// `max_chars` 默认 3000。优先在 `\n\n` 断开，其次 `\n`，最后硬截断。
+pub fn chunk_text(text: &str, max_chars: usize) -> Vec<String> {
+    let max_chars = if max_chars == 0 { 3000 } else { max_chars };
+    let mut chunks = Vec::new();
+    let mut remaining = text;
+
+    while !remaining.is_empty() {
+        if remaining.chars().count() <= max_chars {
+            chunks.push(remaining.to_string());
+            break;
+        }
+
+        // 找截至 max_chars 的字符边界
+        let mut end = remaining
+            .char_indices()
+            .take(max_chars)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(0);
+        // end 可能为 0（max_chars <= 1），需要至少切一个字符
+        if end == 0 {
+            end = remaining.chars().next().map(|c| c.len_utf8()).unwrap_or(0);
+        }
+
+        let slice = &remaining[..end];
+        // 查找最近的段落边界
+        if let Some(pos) = slice.rfind("\n\n") {
+            // 在双换行处切（段落边界）
+            chunks.push(remaining[..pos + 2].to_string());
+            remaining = &remaining[pos + 2..];
+        } else if let Some(pos) = slice.rfind('\n') {
+            // 在单换行处切（行边界）
+            chunks.push(remaining[..pos + 1].to_string());
+            remaining = &remaining[pos + 1..];
+        } else {
+            // 硬截断：在 max_chars 字符边界截断
+            chunks.push(remaining[..end].to_string());
+            remaining = &remaining[end..];
+        }
+    }
+
+    chunks
+}
+
+/// 聚合多个 chunk 的提取结果到 ProjectContext。
+fn aggregate_extraction_results(
+    world_rules_list: Vec<WorldRules>,
+    character_profiles_list: Vec<Vec<CharacterProfile>>,
+    plot_outlines_list: Vec<PlotOutline>,
+    style_guides_list: Vec<StyleGuide>,
+) -> ProjectContext {
+    // ── 世界观规则：取第一个非空结果 ──
+    let world_rules = world_rules_list.into_iter().find(|wr| {
+        !wr.magic_system.is_empty() || !wr.custom_rules.is_empty()
+    });
+
+    // ── 角色档案：按 name 合并去重 ──
+    let mut merged_characters: Vec<CharacterProfile> = Vec::new();
+    for profiles in character_profiles_list {
+        for profile in profiles {
+            if profile.name.is_empty() {
+                continue;
+            }
+            // fuzzy match: 完全相同或包含关系
+            if let Some(existing) = merged_characters.iter_mut().find(|c| {
+                c.name == profile.name
+                    || c.name.contains(&profile.name)
+                    || profile.name.contains(&c.name)
+            }) {
+                // 合并 aliases（通过 speech_patterns 和 background 间接）
+                if !profile.background.is_empty()
+                    && !existing.background.contains(&profile.background)
+                {
+                    existing.background.push('；');
+                    existing.background.push_str(&profile.background);
+                }
+                if !profile.personality.is_empty()
+                    && !existing.personality.contains(&profile.personality)
+                {
+                    existing.personality.push('；');
+                    existing.personality.push_str(&profile.personality);
+                }
+                for goal in &profile.goals {
+                    if !existing.goals.contains(goal) {
+                        existing.goals.push(goal.clone());
+                    }
+                }
+                if !profile.speech_patterns.is_empty()
+                    && !existing.speech_patterns.contains(&profile.speech_patterns)
+                {
+                    existing.speech_patterns.push('；');
+                    existing.speech_patterns.push_str(&profile.speech_patterns);
+                }
+            } else {
+                merged_characters.push(profile);
+            }
+        }
+    }
+
+    // ── 情节结构：main_plot 取最长，subplots 去重 ──
+    let mut best_main_plot = String::new();
+    let mut merged_subplots: Vec<String> = Vec::new();
+    let mut merged_foreshadow: Vec<String> = Vec::new();
+    let mut merged_chapter_outlines: Vec<ChapterOutline> = Vec::new();
+
+    for po in &plot_outlines_list {
+        if po.main_plot.chars().count() > best_main_plot.chars().count() {
+            best_main_plot = po.main_plot.clone();
+        }
+        for sp in &po.subplots {
+            if !merged_subplots.contains(sp) && !sp.is_empty() {
+                merged_subplots.push(sp.clone());
+            }
+        }
+        for fs in &po.foreshadow_plan {
+            if !merged_foreshadow.contains(fs) && !fs.is_empty() {
+                merged_foreshadow.push(fs.clone());
+            }
+        }
+        for co in &po.chapter_outlines {
+            if !merged_chapter_outlines.iter().any(|c| c.chapter_index == co.chapter_index) {
+                merged_chapter_outlines.push(co.clone());
+            }
+        }
+    }
+
+    let plot_outline = if best_main_plot.is_empty() && merged_subplots.is_empty() {
+        None
+    } else {
+        Some(PlotOutline {
+            main_plot: best_main_plot,
+            subplots: merged_subplots,
+            foreshadow_plan: merged_foreshadow,
+            chapter_outlines: merged_chapter_outlines,
+        })
+    };
+
+    // ── 风格：取第一个非空结果 ──
+    let style_guide = style_guides_list.into_iter().find(|sg| {
+        !sg.prose_style.is_empty() || !sg.sentence_preferences.is_empty()
+    });
+
+    ProjectContext {
+        project_id: String::new(),
+        context_version: 1,
+        updated_at: String::new(),
+        world_rules,
+        character_profiles: merged_characters,
+        plot_outline,
+        style_guide,
+        theme_map: None,
+    }
+}
+
+impl Orchestrator {
+    /// 导入管线：分块 → 提取 → 聚合 → ProjectContext。
+    ///
+    /// 1. 将文本分块（每块 ≤3000 字）
+    /// 2. 每个 chunk 并行调用 4 个提取 Agent
+    /// 3. 聚合去重后返回完整的 ProjectContext
+    pub async fn run_import_pipeline(
+        &self,
+        text: String,
+        registry: &AgentRegistry,
+        llm: Arc<dyn LlmClient>,
+        observer: Option<&dyn AnalysisObserver>,
+    ) -> CoreResult<ProjectContext> {
+        let chunks = chunk_text(&text, 3000);
+        let total_chunks = chunks.len();
+        let mut world_rules_list: Vec<WorldRules> = Vec::new();
+        let mut character_profiles_list: Vec<Vec<CharacterProfile>> = Vec::new();
+        let mut plot_outlines_list: Vec<PlotOutline> = Vec::new();
+        let mut style_guides_list: Vec<StyleGuide> = Vec::new();
+
+        for (chunk_idx, chunk) in chunks.iter().enumerate() {
+            // 通知进度
+            if let Some(obs) = observer {
+                obs.on_agent_start(
+                    "import",
+                    &format!("chunk {}/{}", chunk_idx + 1, total_chunks),
+                    (chunk_idx as f64 / total_chunks as f64) * 100.0,
+                );
+            }
+
+            // 构建 chunk 上下文
+            let mut ctx = SharedContext::new("", chunk);
+            ctx.metadata.insert("chunk_text".into(), chunk.clone());
+
+            // 并行调用 4 个提取 Agent
+            let extract_agents = &[
+                AgentId::WorldRuleExtract,
+                AgentId::CharacterProfileExtract,
+                AgentId::PlotStructureExtract,
+                AgentId::StyleExtract,
+            ];
+
+            let agent_task_types: std::collections::HashMap<AgentId, TaskType> = extract_agents
+                .iter()
+                .map(|id| (*id, Self::task_type_for_agent(id)))
+                .collect();
+
+            let (outputs, _usages, _success) = run_parallel(
+                extract_agents,
+                &ctx,
+                registry,
+                Arc::clone(&llm),
+                &agent_task_types,
+                None,
+            )
+            .await;
+
+            // 解析每个 Agent 的输出
+            for (agent_id, output) in &outputs {
+                match agent_id {
+                    AgentId::WorldRuleExtract => {
+                        if let Ok(wr) = serde_json::from_str::<WorldRules>(output) {
+                            world_rules_list.push(wr);
+                        }
+                    }
+                    AgentId::CharacterProfileExtract => {
+                        if let Ok(profiles) = serde_json::from_str::<Vec<CharacterProfile>>(output) {
+                            character_profiles_list.push(profiles);
+                        }
+                    }
+                    AgentId::PlotStructureExtract => {
+                        if let Ok(po) = serde_json::from_str::<PlotOutline>(output) {
+                            plot_outlines_list.push(po);
+                        }
+                    }
+                    AgentId::StyleExtract => {
+                        if let Ok(sg) = serde_json::from_str::<StyleGuide>(output) {
+                            style_guides_list.push(sg);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if let Some(obs) = observer {
+                obs.on_agent_done(
+                    "import",
+                    &format!("chunk {}/{}", chunk_idx + 1, total_chunks),
+                    ((chunk_idx + 1) as f64 / total_chunks as f64) * 100.0,
+                );
+            }
+        }
+
+        // 聚合
+        Ok(aggregate_extraction_results(
+            world_rules_list,
+            character_profiles_list,
+            plot_outlines_list,
+            style_guides_list,
+        ))
     }
 }
 

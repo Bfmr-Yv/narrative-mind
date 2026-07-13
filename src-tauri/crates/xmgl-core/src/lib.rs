@@ -60,6 +60,11 @@ pub enum AgentId {
     Conception,
     EditorInChief,
     EntityExtract,
+    // Phase B: 导入提取 Agent
+    WorldRuleExtract,
+    CharacterProfileExtract,
+    PlotStructureExtract,
+    StyleExtract,
 }
 
 impl AgentId {
@@ -75,6 +80,10 @@ impl AgentId {
             AgentId::Conception => "构思 Agent",
             AgentId::EditorInChief => "总编 Agent",
             AgentId::EntityExtract => "实体提取 Agent",
+            AgentId::WorldRuleExtract => "世界观提取 Agent",
+            AgentId::CharacterProfileExtract => "角色提取 Agent",
+            AgentId::PlotStructureExtract => "情节提取 Agent",
+            AgentId::StyleExtract => "风格提取 Agent",
         }
     }
 
@@ -91,6 +100,10 @@ impl AgentId {
             AgentId::Conception => "imagery_detect",
             AgentId::EditorInChief => "scene_analysis",
             AgentId::EntityExtract => "entity_extract",
+            AgentId::WorldRuleExtract => "world_rule_extract",
+            AgentId::CharacterProfileExtract => "character_profile_extract",
+            AgentId::PlotStructureExtract => "plot_structure_extract",
+            AgentId::StyleExtract => "style_extract",
         }
     }
 
@@ -106,6 +119,10 @@ impl AgentId {
             AgentId::Conception,
             AgentId::EditorInChief,
             AgentId::EntityExtract,
+            AgentId::WorldRuleExtract,
+            AgentId::CharacterProfileExtract,
+            AgentId::PlotStructureExtract,
+            AgentId::StyleExtract,
         ]
     }
 }
@@ -152,6 +169,11 @@ pub enum TaskType {
     ExpectationAnalyze,
     // Phase 3 — 构思
     ImageryDetect,
+    // Phase B — 导入提取
+    WorldRuleExtract,
+    CharacterProfileExtract,
+    PlotStructureExtract,
+    StyleExtract,
 }
 
 impl TaskType {
@@ -174,6 +196,10 @@ impl TaskType {
             TaskType::EconomyCheck => "economy_check",
             TaskType::ExpectationAnalyze => "expectation_analyze",
             TaskType::ImageryDetect => "imagery_detect",
+            TaskType::WorldRuleExtract => "world_rule_extract",
+            TaskType::CharacterProfileExtract => "character_profile_extract",
+            TaskType::PlotStructureExtract => "plot_structure_extract",
+            TaskType::StyleExtract => "style_extract",
         }
     }
 }
@@ -200,6 +226,10 @@ impl FromStr for TaskType {
             "economy_check" => Ok(TaskType::EconomyCheck),
             "expectation_analyze" => Ok(TaskType::ExpectationAnalyze),
             "imagery_detect" => Ok(TaskType::ImageryDetect),
+            "world_rule_extract" => Ok(TaskType::WorldRuleExtract),
+            "character_profile_extract" => Ok(TaskType::CharacterProfileExtract),
+            "plot_structure_extract" => Ok(TaskType::PlotStructureExtract),
+            "style_extract" => Ok(TaskType::StyleExtract),
             _ => Err(format!("unknown TaskType: {s}")),
         }
     }
@@ -604,8 +634,8 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_id_all_has_10() {
-        assert_eq!(AgentId::all().len(), 10);
+    fn test_agent_id_all_has_14() {
+        assert_eq!(AgentId::all().len(), 14);
     }
 
     #[test]

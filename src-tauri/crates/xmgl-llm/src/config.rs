@@ -190,6 +190,11 @@ pub fn tier_route(task_type: &str) -> Option<TierRoute> {
         "economy_check" => Some(TierRoute { max_tokens: 1536, temperature: 0.2 }),
         "expectation_analyze" => Some(TierRoute { max_tokens: 2048, temperature: 0.4 }),
         "imagery_detect" => Some(TierRoute { max_tokens: 2048, temperature: 0.4 }),
+        "world_rule_extract" => Some(TierRoute { max_tokens: 2048, temperature: 0.1 }),
+        "character_profile_extract" => Some(TierRoute { max_tokens: 2048, temperature: 0.1 }),
+        "plot_structure_extract" => Some(TierRoute { max_tokens: 2048, temperature: 0.1 }),
+        "style_extract" => Some(TierRoute { max_tokens: 2048, temperature: 0.1 }),
+        "expand_context" => Some(TierRoute { max_tokens: 2048, temperature: 0.5 }),
         _ => None,
     }
 }

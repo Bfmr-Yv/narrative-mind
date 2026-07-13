@@ -401,6 +401,82 @@ pub const IMAGERY_DETECT_SYSTEM: &str = r#"你是一个小说意象与母题分�
 ## 输出 JSON 格式
 {"findings": [{"title": "发现标题", "description": "意象/母题分析描述", "severity": "Info"|"Warn"|"Critical", "quote": "原文中触发此发现的具体文本片段", "suggestion": "修改建议（可为 null）"}]}"#;
 
+// ── Phase B: 导入提取 Prompt ──
+
+pub const WORLD_RULE_EXTRACT_SYSTEM: &str = r#"你是一个虚构世界观规则提取专家。你的任务是从给定的文本片段中提取世界观相关信息。
+你需要分析文本中透露的世界规则、力量体系、技术水平、社会结构和地理环境等信息。
+
+## 提取要求
+1. 从文本中推断而非凭空虚构
+2. 如果文本中未体现某个方面，对应字段留空字符串
+3. custom_rules 列出所有明确的特殊规则
+
+## 输出 JSON 格式
+{
+  "magic_system": "力量体系描述",
+  "technology_level": "科技水平描述",
+  "social_structure": "社会结构描述",
+  "geography": "地理环境描述",
+  "custom_rules": ["特殊规则1", "特殊规则2"]
+}"#;
+
+pub const CHARACTER_PROFILE_EXTRACT_SYSTEM: &str = r#"你是一个小说角色档案提取专家。你的任务是从给定的文本片段中提取所有角色的档案信息。
+注意区分主要角色和次要角色，提取每个角色的背景、性格、目标和语言特征。
+
+## 提取要求
+1. 角色名称必须精确（从文本中提取，不要编造）
+2. 背景、性格、目标基于文本推断，不确定的标注"未知"
+3. speech_patterns 描述角色说话的语言特点
+
+## 输出 JSON 格式
+[{
+  "character_id": "从名称生成的ID",
+  "name": "角色名称",
+  "background": "角色背景",
+  "personality": "性格描述",
+  "goals": ["目标1", "目标2"],
+  "speech_patterns": "语言特点描述"
+}]"#;
+
+pub const PLOT_STRUCTURE_EXTRACT_SYSTEM: &str = r#"你是一个小说情节结构提取专家。你的任务是从给定的文本片段中提取情节结构信息。
+分析主线情节、支线故事、伏笔线索和章节组织结构。
+
+## 提取要求
+1. main_plot 描述已发生的主要情节
+2. subplots 列出已展开的支线故事
+3. foreshadow_plan 列出已埋设的伏笔线索
+4. chapter_outlines 基于文本中可识别的章节/场景分段
+
+## 输出 JSON 格式
+{
+  "main_plot": "主线情节描述",
+  "subplots": ["支线1", "支线2"],
+  "foreshadow_plan": ["伏笔线索1", "伏笔线索2"],
+  "chapter_outlines": [{
+    "chapter_index": 1,
+    "summary": "章节摘要",
+    "key_events": ["关键事件1", "关键事件2"]
+  }]
+}"#;
+
+pub const STYLE_EXTRACT_SYSTEM: &str = r#"你是一个小说文风特征提取专家。你的任务是从给定的文本片段中提取文风特征。
+分析文体风格、句式偏好、对话写法和叙事距离。
+
+## 提取要求
+1. 基于文本实际特征描述，不要评价好坏
+2. prose_style 描述整体文体（如平实/华丽/冷峻/温暖）
+3. sentence_preferences 描述句式特征（如长短句比例/排比/短句偏好）
+4. dialogue_conventions 描述对话写作规则（如直接引语/间接引语/内心独白比重）
+5. narrative_distance 描述叙事视角距离（如全知/限知/第一人称）
+
+## 输出 JSON 格式
+{
+  "prose_style": "文体风格描述",
+  "sentence_preferences": "句式偏好描述",
+  "dialogue_conventions": "对话惯例描述",
+  "narrative_distance": "叙事距离描述"
+}"#;
+
 // =========================================================================
 // 格式化函数
 // =========================================================================
@@ -689,6 +765,48 @@ pub fn format_imagery_detect_prompt(vars: &HashMap<String, String>) -> String {
     parts.join("\n\n")
 }
 
+// ── Phase B: 提取 formatter ──
+
+pub fn format_world_rule_extract_prompt(vars: &HashMap<String, String>) -> String {
+    let chunk_text = get_var(vars, "chunk_text");
+    format!("以下为待分析的文本片段，请提取其中蕴含的世界观规则：\n\n{}", chunk_text)
+}
+
+pub fn format_character_profile_extract_prompt(vars: &HashMap<String, String>) -> String {
+    let chunk_text = get_var(vars, "chunk_text");
+    format!("以下为待分析的文本片段，请提取其中出现的所有角色档案：\n\n{}", chunk_text)
+}
+
+pub fn format_plot_structure_extract_prompt(vars: &HashMap<String, String>) -> String {
+    let chunk_text = get_var(vars, "chunk_text");
+    format!("以下为待分析的文本片段，请提取其中的情节结构：\n\n{}", chunk_text)
+}
+
+pub fn format_style_extract_prompt(vars: &HashMap<String, String>) -> String {
+    let chunk_text = get_var(vars, "chunk_text");
+    format!("以下为待分析的文本片段，请提取其中的文风特征：\n\n{}", chunk_text)
+}
+
+// ── Phase B: expand_context prompt ──
+
+pub const EXPAND_CONTEXT_SYSTEM: &str = r#"你是一个小说创作助手。你的任务是根据用户提供的创作上下文和已有内容，帮助补充和完善某个维度的设定。
+请输出补充后的完整内容（JSON格式），不要输出解释性文字，只输出JSON。"#;
+
+pub fn format_expand_context_prompt(vars: &HashMap<String, String>) -> String {
+    let section = get_var(vars, "section");
+    let current = get_var(vars, "current_content");
+    let reference = get_var(vars, "reference_context");
+    let mut parts = vec![
+        format!("你需要补充的维度：{}", section),
+        format!("当前已填内容（JSON）：\n{}", current),
+    ];
+    if !reference.is_empty() {
+        parts.push(format!("参考上下文（完整的 ProjectContext）：\n{}", reference));
+    }
+    parts.push("请在已有内容基础上扩展补充，输出完整的补充后JSON。不要遗漏已有内容。".to_string());
+    parts.join("\n\n")
+}
+
 // =========================================================================
 // PROMPT_REGISTRY
 // =========================================================================
@@ -764,6 +882,26 @@ pub static PROMPT_REGISTRY: LazyLock<HashMap<&'static str, PromptTemplate>> = La
         system: IMAGERY_DETECT_SYSTEM,
         format: format_imagery_detect_prompt,
     });
+    m.insert("world_rule_extract", PromptTemplate {
+        system: WORLD_RULE_EXTRACT_SYSTEM,
+        format: format_world_rule_extract_prompt,
+    });
+    m.insert("character_profile_extract", PromptTemplate {
+        system: CHARACTER_PROFILE_EXTRACT_SYSTEM,
+        format: format_character_profile_extract_prompt,
+    });
+    m.insert("plot_structure_extract", PromptTemplate {
+        system: PLOT_STRUCTURE_EXTRACT_SYSTEM,
+        format: format_plot_structure_extract_prompt,
+    });
+    m.insert("style_extract", PromptTemplate {
+        system: STYLE_EXTRACT_SYSTEM,
+        format: format_style_extract_prompt,
+    });
+    m.insert("expand_context", PromptTemplate {
+        system: EXPAND_CONTEXT_SYSTEM,
+        format: format_expand_context_prompt,
+    });
 
     m
 });
@@ -777,12 +915,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_registry_has_all_17_keys() {
-        let keys: [&str; 17] = [
+    fn test_registry_has_all_21_keys() {
+        let keys: [&str; 21] = [
             "pad_compute", "entity_extract", "action_infer", "rule_check", "spatial_check",
             "rerank", "scene_analysis", "foreshadow_detect", "causal_extract",
             "resolution_check", "event_predict", "style_check", "register_check",
             "theme_extract", "economy_check", "expectation_analyze", "imagery_detect",
+            "world_rule_extract", "character_profile_extract", "plot_structure_extract", "style_extract",
         ];
         for key in keys {
             assert!(PROMPT_REGISTRY.contains_key(key), "missing prompt key: {key}");

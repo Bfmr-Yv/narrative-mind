@@ -6,11 +6,11 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Editor, StatusBar, StickyBoard, LibraryPanel } from "./components";
+import { Editor, StatusBar, StickyBoard, LibraryPanel, ProjectSettingsPanel, ImportPanel } from "./components";
 import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, onAgentProgress, onProposalReady, onAnalysisComplete } from "./api";
 import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
-import type { AgentState, AgentAnnotation } from "./types";
+import type { AgentState, AgentAnnotation, ProjectContext } from "./types";
 import { useAppStore } from "./store";
 import "./App.css";
 
@@ -20,6 +20,9 @@ function App() {
   const storeAnalyzing = useAppStore((s) => s.analyzing);
   const setAnalysisResult = useAppStore((s) => s.setAnalysisResult);
   const setAnalyzing = useAppStore((s) => s.setAnalyzing);
+  const projectContext = useAppStore((s) => s.projectContext);
+  const loadProjectContext = useAppStore((s) => s.loadProjectContext);
+  const saveProjectContext = useAppStore((s) => s.saveProjectContext);
 
   // ── 本地状态 ──
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
@@ -31,6 +34,9 @@ function App() {
   const [proposals, setProposals] = useState<ProposalReady[]>([]);
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
   const [totalCost, setTotalCost] = useState(0);
+  const [viewMode, setViewMode] = useState<"editor" | "settings" | "import">("editor");
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
 
   // ── 加载项目列表 ──
   useEffect(() => {
@@ -97,20 +103,27 @@ function App() {
     setAnnotations([]);
     setProposals([]);
     setAgentStates([]);
+    setViewMode("editor");
   }, []);
 
-  // ── 新建项目 ──
+  // ── 新建项目（inline 输入框，替换 prompt） ──
   const handleNewProject = useCallback(async () => {
-    const name = prompt("项目名称：");
-    if (!name?.trim()) return;
+    if (!newProjectName.trim()) return;
     try {
-      const p = await createProject(name.trim());
+      const p = await createProject(newProjectName.trim());
       setProjects((prev) => [...prev, p]);
       setSelectedProject(p.id);
+      setNewProjectName("");
+      setShowNewProject(false);
+      // 加载 ProjectContext → 自动打开项目设置
+      setTimeout(() => {
+        loadProjectContext();
+        setViewMode("settings");
+      }, 100);
     } catch (e) {
       alert(`创建项目失败: ${e}`);
     }
-  }, []);
+  }, [newProjectName, loadProjectContext]);
 
   // ── 新建章节 ──
   const handleNewChapter = useCallback(async () => {
@@ -229,7 +242,13 @@ function App() {
         </h1>
         <select
           value={selectedProject}
-          onChange={(e) => setSelectedProject(e.target.value)}
+          onChange={(e) => {
+            setSelectedProject(e.target.value);
+            if (e.target.value) {
+              loadProjectContext();
+            }
+            setViewMode("editor");
+          }}
           style={{ fontSize: 13, padding: "4px 8px" }}
         >
           <option value="">选择项目...</option>
@@ -239,20 +258,45 @@ function App() {
             </option>
           ))}
         </select>
-        <button
-          onClick={handleNewProject}
-          title="新建项目"
-          style={{
-            fontSize: 18,
-            padding: "0 6px",
-            border: "1px solid #ccc",
-            borderRadius: 4,
-            background: "#fff",
-            cursor: "pointer",
-            lineHeight: "24px",
-          }}
-        >
-          ＋
+        {showNewProject ? (
+          <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              autoFocus
+              value={newProjectName}
+              onChange={e => setNewProjectName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") handleNewProject();
+                if (e.key === "Escape") { setShowNewProject(false); setNewProjectName(""); }
+              }}
+              placeholder="项目名称..."
+              style={{ fontSize: 13, padding: "4px 8px", border: "1px solid #ccc", borderRadius: 4, width: 150 }}
+            />
+            <button onClick={handleNewProject} style={{ fontSize: 13, padding: "4px 8px", border: "none", borderRadius: 4, background: "#4285f4", color: "#fff", cursor: "pointer" }}>
+              创建
+            </button>
+            <button onClick={() => { setShowNewProject(false); setNewProjectName(""); }}
+              style={{ fontSize: 13, padding: "4px 8px", border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer" }}>
+              ✕
+            </button>
+          </span>
+        ) : (
+          <button onClick={() => setShowNewProject(true)} title="新建项目"
+            style={{ fontSize: 18, padding: "0 6px", border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer", lineHeight: "24px" }}>
+            ＋
+          </button>
+        )}
+        <span style={{ width: 1, background: "#e0e0e0", alignSelf: "stretch", margin: "4px 4px" }} />
+        <button onClick={() => { if (selectedProject) { loadProjectContext(); setViewMode("settings"); } }}
+          disabled={!selectedProject}
+          title="项目设置"
+          style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: selectedProject ? "pointer" : "default", opacity: selectedProject ? 1 : 0.4 }}>
+          ⚙️ 项目设置
+        </button>
+        <button onClick={() => { if (selectedProject) { setViewMode("import"); } }}
+          disabled={!selectedProject}
+          title="导入已有作品"
+          style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: selectedProject ? "pointer" : "default", opacity: selectedProject ? 1 : 0.4 }}>
+          📥 导入
         </button>
       </header>
 
@@ -328,69 +372,121 @@ function App() {
           {selectedProject && <LibraryPanel projectId={selectedProject} />}
         </nav>
 
-        {/* 编辑器 */}
+        {/* 主区域（编辑器 / 项目设置 / 导入） */}
         <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {/* 编辑器工具栏 */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "4px 12px",
-              borderBottom: "1px solid #e0e0e0",
-              background: "#fff",
-            }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 600 }}>
-              {selectedChapter?.title ?? "未选择章节"}
-            </span>
-            <span style={{ flex: 1 }} />
-            <button
-              onClick={handleQuickAnalyze}
-              disabled={!selectedChapter || storeAnalyzing}
-              style={{
-                padding: "4px 12px",
-                fontSize: 12,
-                background: storeAnalyzing ? "#ccc" : "#4285f4",
-                color: "#fff",
-                border: "none",
-                borderRadius: 4,
-                cursor: selectedChapter && !storeAnalyzing ? "pointer" : "default",
+          {viewMode === "settings" && selectedProject ? (
+            <ProjectSettingsPanel
+              projectId={selectedProject}
+              projectContext={projectContext}
+              onSave={async (ctx, expectedVersion) => {
+                await saveProjectContext(ctx, expectedVersion);
+                await loadProjectContext();
               }}
-            >
-              {storeAnalyzing ? "⏳ 分析中..." : "🔍 分析"}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!selectedChapter}
-              style={{
-                padding: "4px 12px",
-                fontSize: 12,
-                border: "1px solid #ccc",
-                borderRadius: 4,
-                background: "#fff",
-                cursor: selectedChapter ? "pointer" : "default",
-              }}
-            >
-              💾 保存
-            </button>
-          </div>
-          <div style={{ flex: 1, overflow: "hidden" }}>
-            <Editor
-              content={editorContent}
-              onChange={setEditorContent}
-              annotations={annotations}
-              proposals={proposals}
+              onClose={() => setViewMode("editor")}
             />
-          </div>
+          ) : viewMode === "import" && selectedProject ? (
+            <ImportPanel
+              projectId={selectedProject}
+              onImport={async (ctx) => {
+                await saveProjectContext(ctx);
+                await loadProjectContext();
+                setViewMode("editor");
+              }}
+              onClose={() => setViewMode("editor")}
+            />
+          ) : (
+            <>
+              {/* 编辑器工具栏 */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "4px 12px",
+                  borderBottom: "1px solid #e0e0e0",
+                  background: "#fff",
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  {selectedChapter?.title ?? "未选择章节"}
+                </span>
+                <span style={{ flex: 1 }} />
+                <button
+                  onClick={handleQuickAnalyze}
+                  disabled={!selectedChapter || storeAnalyzing}
+                  style={{
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    background: storeAnalyzing ? "#ccc" : "#4285f4",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    cursor: selectedChapter && !storeAnalyzing ? "pointer" : "default",
+                  }}
+                >
+                  {storeAnalyzing ? "⏳ 分析中..." : "🔍 分析"}
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={!selectedChapter}
+                  style={{
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    border: "1px solid #ccc",
+                    borderRadius: 4,
+                    background: "#fff",
+                    cursor: selectedChapter ? "pointer" : "default",
+                  }}
+                >
+                  💾 保存
+                </button>
+              </div>
 
-          {/* 状态栏 */}
-          <StatusBar
-            agents={agentStates}
-            topology={storeAnalysisResult?.topology}
-            complexity={storeAnalysisResult?.complexity}
-            totalCost={totalCost}
-          />
+              {selectedProject && !selectedChapter && !projectContext ? (
+                /* 引导提示：项目无章节且无创作上下文 */
+                <div style={{
+                  flex: 1, display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center", gap: 16,
+                  color: "#888", background: "#fafafa",
+                }}>
+                  <div style={{ fontSize: 48 }}>📝</div>
+                  <div style={{ fontSize: 16, fontWeight: 600 }}>欢迎来到创作工坊</div>
+                  <div style={{ fontSize: 13, textAlign: "center", maxWidth: 360 }}>
+                    请先完成项目设置或导入已有文本，然后开始创作你的故事。
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { loadProjectContext(); setViewMode("settings"); }}
+                      style={{ padding: "8px 20px", fontSize: 13, border: "none", borderRadius: 4, background: "#4285f4", color: "#fff", cursor: "pointer" }}>
+                      ⚙️ 项目设置
+                    </button>
+                    <button onClick={() => setViewMode("import")}
+                      style={{ padding: "8px 20px", fontSize: 13, border: "1px solid #4285f4", borderRadius: 4, background: "#fff", color: "#4285f4", cursor: "pointer" }}>
+                      📥 导入已有作品
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ flex: 1, overflow: "hidden" }}>
+                    <Editor
+                      content={editorContent}
+                      onChange={setEditorContent}
+                      annotations={annotations}
+                      proposals={proposals}
+                    />
+                  </div>
+
+                  {/* 状态栏 */}
+                  <StatusBar
+                    agents={agentStates}
+                    topology={storeAnalysisResult?.topology}
+                    complexity={storeAnalysisResult?.complexity}
+                    totalCost={totalCost}
+                  />
+                </>
+              )}
+            </>
+          )}
         </main>
 
         {/* 分析面板侧边栏 */}

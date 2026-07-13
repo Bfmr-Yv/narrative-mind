@@ -10,3 +10,5 @@ export { FindingsCard } from "./FindingsCard";
 export { PADView } from "./PADView";
 export { LibraryPanel } from "./LibraryPanel";
 export { StickyBoard } from "./StickyBoard";
+export { ProjectSettingsPanel } from "./ProjectSettingsPanel";
+export { ImportPanel } from "./ImportPanel";

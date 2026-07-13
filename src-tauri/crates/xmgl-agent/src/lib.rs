@@ -299,6 +299,10 @@ impl AgentRegistry {
         registry.register(Arc::new(ConceptionAgent));
         registry.register(Arc::new(EditorInChiefAgent));
         registry.register(Arc::new(EntityExtractAgent));
+        registry.register(Arc::new(WorldRuleExtractAgent));
+        registry.register(Arc::new(CharacterProfileExtractAgent));
+        registry.register(Arc::new(PlotStructureExtractAgent));
+        registry.register(Arc::new(StyleExtractAgent));
         registry
     }
 }
@@ -561,6 +565,56 @@ agent_impl!(EntityExtractAgent, AgentId::EntityExtract, "实体提取 Agent", Mo
     vars
 });
 
+// ── Phase B: 提取 Agent（用于导入模式）──
+
+// WorldRuleExtractAgent: 从文本片段提取世界观规则
+agent_impl!(WorldRuleExtractAgent, AgentId::WorldRuleExtract, "世界观提取 Agent", ModelTier::Flash,
+    TaskType::WorldRuleExtract, "world_rule_extract",
+    |_tt| "world_rule_extract",
+    |ctx| {
+    let mut vars = HashMap::new();
+    if let Some(chunk) = ctx.metadata.get("chunk_text") {
+        vars.insert("chunk_text".into(), chunk.clone());
+    }
+    vars
+});
+
+// CharacterProfileExtractAgent: 从文本片段提取角色档案
+agent_impl!(CharacterProfileExtractAgent, AgentId::CharacterProfileExtract, "角色提取 Agent", ModelTier::Flash,
+    TaskType::CharacterProfileExtract, "character_profile_extract",
+    |_tt| "character_profile_extract",
+    |ctx| {
+    let mut vars = HashMap::new();
+    if let Some(chunk) = ctx.metadata.get("chunk_text") {
+        vars.insert("chunk_text".into(), chunk.clone());
+    }
+    vars
+});
+
+// PlotStructureExtractAgent: 从文本片段提取情节结构
+agent_impl!(PlotStructureExtractAgent, AgentId::PlotStructureExtract, "情节提取 Agent", ModelTier::Flash,
+    TaskType::PlotStructureExtract, "plot_structure_extract",
+    |_tt| "plot_structure_extract",
+    |ctx| {
+    let mut vars = HashMap::new();
+    if let Some(chunk) = ctx.metadata.get("chunk_text") {
+        vars.insert("chunk_text".into(), chunk.clone());
+    }
+    vars
+});
+
+// StyleExtractAgent: 从文本片段提取文风特征
+agent_impl!(StyleExtractAgent, AgentId::StyleExtract, "风格提取 Agent", ModelTier::Flash,
+    TaskType::StyleExtract, "style_extract",
+    |_tt| "style_extract",
+    |ctx| {
+    let mut vars = HashMap::new();
+    if let Some(chunk) = ctx.metadata.get("chunk_text") {
+        vars.insert("chunk_text".into(), chunk.clone());
+    }
+    vars
+});
+
 // =========================================================================
 // Tests
 // =========================================================================
@@ -626,10 +680,14 @@ mod tests {
             Arc::new(ConceptionAgent),
             Arc::new(EditorInChiefAgent),
             Arc::new(EntityExtractAgent),
+            Arc::new(WorldRuleExtractAgent),
+            Arc::new(CharacterProfileExtractAgent),
+            Arc::new(PlotStructureExtractAgent),
+            Arc::new(StyleExtractAgent),
         ];
 
         let ids: Vec<AgentId> = agents.iter().map(|a| a.id()).collect();
-        assert_eq!(ids.len(), 10);
+        assert_eq!(ids.len(), 14);
         assert!(ids.contains(&AgentId::Character));
         assert!(ids.contains(&AgentId::EditorInChief));
     }
@@ -741,7 +799,7 @@ mod tests {
     #[test]
     fn test_registry_with_all_agents() {
         let reg = AgentRegistry::with_all_agents();
-        assert_eq!(reg.len(), 10);
+        assert_eq!(reg.len(), 14);
         assert!(reg.get(AgentId::Character).is_some());
         assert!(reg.get(AgentId::EditorInChief).is_some());
     }

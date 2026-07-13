@@ -29,7 +29,12 @@ export {
 } from "./events";
 export type { AgentProgress, ProposalReady, AnalysisComplete } from "./events";
 
-export { runAnalysis } from "./analysis";
+export {
+  runAnalysis,
+  runFullAnalysis,
+  expandContextSection,
+  runImportAnalysis,
+} from "./analysis";
 export type { AnalysisOutput, AgentOutput } from "./analysis";
 
 // Phase L1: 实体 CRUD

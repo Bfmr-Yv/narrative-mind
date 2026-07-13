@@ -305,6 +305,90 @@ pub async fn run_full_analysis(
     })
 }
 
+/// AI 辅助填写：根据已有内容 + 参考上下文，扩展指定 ProjectContext section。
+///
+/// section: "world_rules" | "character_profiles" | "plot_outline" | "style_guide" | "theme_map"
+/// current_json: 当前已填内容的 JSON 字符串
+/// project_id: 项目 ID（用于加载参考上下文）
+#[tauri::command]
+pub async fn expand_context_section(
+    state: State<'_, AppState>,
+    section: String,
+    current_json: String,
+    project_id: String,
+) -> Result<String, String> {
+    // 加载参考上下文
+    let reference = state
+        .project_manager
+        .get_project_context(&project_id)
+        .unwrap_or(None)
+        .map(|pctx| serde_json::to_string(&pctx).unwrap_or_default())
+        .unwrap_or_default();
+
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("section".into(), section);
+    vars.insert("current_content".into(), current_json);
+    vars.insert("reference_context".into(), reference);
+
+    let response = state
+        .llm_client
+        .call_agent("expand_context", &vars, TaskType::SceneAnalysis)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if response.success {
+        let result = response
+            .result
+            .map(|v| {
+                // 尝试提取纯 JSON 字符串（LLM 可能包裹在 markdown 代码块或 findings 中）
+                let s = v.to_string();
+                if let Some(obj) = v.as_object() {
+                    // 直接是 JSON 对象 → 返回它的 JSON 字符串
+                    serde_json::to_string(obj).unwrap_or(s)
+                } else if let Some(arr) = v.as_array() {
+                    serde_json::to_string(arr).unwrap_or(s)
+                } else {
+                    s
+                }
+            })
+            .unwrap_or_default();
+        Ok(result)
+    } else {
+        Err(response.error.unwrap_or_else(|| "LLM call failed".into()))
+    }
+}
+
+/// 导入分析：从已有小说文本中提取创作上下文。
+///
+/// 分块 → 4 维提取 Agent 并行 → 聚合去重 → 返回 ProjectContext。
+/// 不自动保存，由用户在 UI 上确认后手动保存。
+#[tauri::command]
+pub async fn run_import_analysis(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    text: String,
+    project_id: String,
+) -> Result<ProjectContext, String> {
+    let observer = TauriAnalysisObserver {
+        app_handle: app_handle.clone(),
+    };
+
+    let mut pctx = state
+        .orchestrator
+        .run_import_pipeline(
+            text,
+            &state.agent_registry,
+            Arc::clone(&state.llm_client),
+            Some(&observer),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    pctx.project_id = project_id;
+
+    Ok(pctx)
+}
+
 // ── 辅助：从 AppState 获取数据库连接 ──
 
 fn open_db(state: &State<'_, AppState>) -> Result<rusqlite::Connection, String> {
