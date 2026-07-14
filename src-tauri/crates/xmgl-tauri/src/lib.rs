@@ -29,7 +29,11 @@ pub struct AppState {
     pub llm_client: Arc<dyn LlmClient>,
     pub agent_registry: AgentRegistry,
     pub orchestrator: Orchestrator,
-    /// Phase D: 黄金三章生成会话
+    /// Phase D: 黄金三章生成会话。
+    ///
+    /// 会话仅在内存中维护，**应用重启后丢失**。
+    /// 用户需在一次运行中完成"启动→生成→确认保存"全流程。
+    /// 如遇到异常退出，重新打开黄金三章向导即可开始新会话。
     pub golden_three_sessions: Mutex<HashMap<String, GoldenThreeState>>,
 }
 

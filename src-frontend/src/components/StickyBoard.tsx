@@ -403,18 +403,18 @@ export const StickyBoard: FC<StickyBoardProps> = ({
               <div style={{ fontSize: 11, fontWeight: 600, color: "#555", marginBottom: 3, padding: "2px 4px", background: "#f0f0f0", borderRadius: 3 }}>
                 {AGENT_NAMES[agentId] ?? agentId} ({agentFindings.length})
               </div>
-              {agentFindings.map((f, i) => (
-                {dismissedFindingIds.has(f.id ?? "") ? null : (
+              {agentFindings
+                .filter(f => !dismissedFindingIds.has(f.id ?? ""))
+                .map((f, i) => (
                   <FindingsCard
                     key={`${f.agent_id}-${f.title}-${i}`}
                     finding={f}
                     agentName={AGENT_NAMES[f.agent_id] ?? f.agent_id}
                     onDismiss={onDismissFinding}
                     onSnooze={onSnoozeFinding}
-                    isDismissed={dismissedFindingIds.has(f.id ?? "")}
+                    isDismissed={false}
                   />
-                )}
-              ))}
+                ))}
             </div>
           ))}
         </div>

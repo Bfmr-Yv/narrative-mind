@@ -29,7 +29,13 @@ export type AgentId =
   | "ReaderExpectation"
   | "Conception"
   | "EditorInChief"
-  | "EntityExtract";
+  | "EntityExtract"
+  | "WorldRuleExtract"
+  | "CharacterProfileExtract"
+  | "PlotStructureExtract"
+  | "StyleExtract"
+  | "ContextReflection"
+  | "Continuation";
 
 // =========================================================================
 // 严重级别

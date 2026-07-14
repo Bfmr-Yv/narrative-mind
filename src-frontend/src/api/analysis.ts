@@ -179,10 +179,12 @@ export async function startGoldenThree(projectId: string): Promise<GoldenThreeOu
 export async function continueGoldenThree(
   sessionId: string,
   editedChapter?: string,
+  regenerate?: boolean,
 ): Promise<GoldenThreeOutput> {
   return invoke<GoldenThreeOutput>("continue_golden_three", {
     sessionId,
     editedChapter: editedChapter ?? null,
+    regenerate: regenerate ?? null,
   });
 }
 

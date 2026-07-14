@@ -416,15 +416,9 @@ pub async fn run_continuation(
         .ok_or_else(|| format!("chapter not found: {chapter_id}"))?;
 
     let mut ctx = SharedContext::new(&chapter.project_id, &editor_text);
-    // enrich ProjectContext
-    match state.project_manager.get_project_context(&chapter.project_id) {
-        Ok(Some(pctx)) => {
-            if let Ok(json) = serde_json::to_string(&pctx) {
-                ctx.metadata.insert("project_context_json".into(), json);
-            }
-            ctx.enrich_with_project_context(&pctx);
-        }
-        _ => {}
+    // enrich SharedContext with ProjectContext expanded fields
+    if let Ok(Some(pctx)) = state.project_manager.get_project_context(&chapter.project_id) {
+        ctx.enrich_with_project_context(&pctx);
     }
 
     // 调用 ContinuationAgent
@@ -511,20 +505,21 @@ pub async fn continue_golden_three(
     state: State<'_, AppState>,
     session_id: String,
     edited_chapter: Option<String>,
+    regenerate: Option<bool>,
 ) -> Result<GoldenThreeOutput, String> {
-    let pctx = {
+    let gts = {
         let sessions = state.golden_three_sessions.lock().map_err(|e| e.to_string())?;
-        let gts = sessions.get(&session_id).ok_or("session not found")?;
-        let project_id = gts.project_id.clone();
-        gts.clone()
+        sessions.get(&session_id).ok_or("session not found")?.clone()
     };
 
-    let pctx_full = state.project_manager.get_project_context(&pctx.project_id)
+    let pctx = state.project_manager.get_project_context(&gts.project_id)
         .map_err(|e| e.to_string())?
         .ok_or("ProjectContext not found")?;
 
+    let is_regenerate = regenerate.unwrap_or(false);
+
     // 处理编辑
-    let mut gts = pctx.clone();
+    let mut gts = gts.clone();
     if let Some(edited) = edited_chapter {
         match gts.stage {
             1 => gts.chapter_1 = edited,
@@ -533,30 +528,47 @@ pub async fn continue_golden_three(
         }
     }
 
-    gts.stage += 1;
-    let prev_chapters: Vec<String> = match gts.stage {
-        2 => vec![gts.chapter_1.clone()],
-        3 => vec![gts.chapter_1.clone(), gts.chapter_2.clone()],
-        _ => vec![],
-    };
+    // 确定生成目标和前文章节
+    let target_stage;
+    let prev_chapters: Vec<String>;
+    if is_regenerate {
+        // 重新生成当前章：stage 不自增，用当前 stage 的前文
+        target_stage = gts.stage;
+        prev_chapters = match target_stage {
+            1 => vec![],
+            2 => vec![gts.chapter_1.clone()],
+            3 => vec![gts.chapter_1.clone(), gts.chapter_2.clone()],
+            _ => vec![],
+        };
+    } else {
+        // 正常生成下一章
+        gts.stage += 1;
+        target_stage = gts.stage;
+        prev_chapters = match target_stage {
+            2 => vec![gts.chapter_1.clone()],
+            3 => vec![gts.chapter_1.clone(), gts.chapter_2.clone()],
+            _ => vec![],
+        };
+    }
 
     let (chapter_text, notes) = state.orchestrator
-        .run_golden_three_chapter(&pctx_full, gts.stage, &prev_chapters, &gts.consistency_notes, &state.agent_registry, Arc::clone(&state.llm_client))
+        .run_golden_three_chapter(&pctx, target_stage, &prev_chapters, &gts.consistency_notes, &state.agent_registry, Arc::clone(&state.llm_client))
         .await
         .map_err(|e| e.to_string())?;
 
-    match gts.stage {
+    // 写入对应章节
+    match target_stage {
+        1 => gts.chapter_1 = chapter_text.clone(),
         2 => gts.chapter_2 = chapter_text.clone(),
         3 => gts.chapter_3 = chapter_text.clone(),
         _ => {}
     }
     gts.consistency_notes.extend(notes.clone());
 
-    let stage = gts.stage;
     state.golden_three_sessions.lock().map_err(|e| e.to_string())?
         .insert(session_id.clone(), gts);
 
-    Ok(GoldenThreeOutput { session_id, stage, chapter_text, consistency_notes: notes })
+    Ok(GoldenThreeOutput { session_id, stage: target_stage, chapter_text, consistency_notes: notes })
 }
 
 #[tauri::command]

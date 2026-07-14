@@ -1,7 +1,10 @@
 //! Narrative Mind v4.0 — Tauri 桌面应用入口
 //!
-//! Phase B: 接线 xmgl-tauri 的 AppState + commands。
-//! Phase D: 接入 Orchestrator + Agent 事件循环。
+//! Phase A-D 完成: 创作工坊四能力就绪（上下文导入/多维分析/反思闭环/续写生成）。
+//! Phase E: 实体管理面板。
+//! Phase F: 成本追踪 + 分析观察者接线。
+//! Phase G/H: 分析结果可视化 + 建议管理。
+//! Phase L: 三面板 UI 重构。
 
 // 防止未连接 Tauri 时显示控制台窗口
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]

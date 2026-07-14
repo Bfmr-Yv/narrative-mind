@@ -104,6 +104,30 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
     }
   }, [sessionId, editing, editText]);
 
+  // ── 重新生成当前章 ──
+  const handleRegenerate = useCallback(async () => {
+    if (!sessionId) return;
+    setGenerating(true);
+    try {
+      const edited = editing ? editText : undefined;
+      setEditing(false);
+      const result = await continueGoldenThree(sessionId, edited, true);
+      setChapters(prev => {
+        const next = { ...prev };
+        if (result.stage === 1) next.ch1 = result.chapter_text;
+        if (result.stage === 2) next.ch2 = result.chapter_text;
+        if (result.stage === 3) next.ch3 = result.chapter_text;
+        return next;
+      });
+      setNotes(result.consistency_notes);
+      // stage 不变，因为是重新生成
+    } catch (e) {
+      alert(`重新生成失败: ${e}`);
+    } finally {
+      setGenerating(false);
+    }
+  }, [sessionId, editing, editText]);
+
   // ── 完成 → 保存三章 ──
   const handleFinalize = useCallback(async () => {
     if (!sessionId) return;
@@ -231,7 +255,7 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
                   {generating ? "⏳ 保存中..." : "✅ 完成！保存为章节"}
                 </button>
               )}
-              <button style={btnWarning} onClick={handleContinue} disabled={generating}>
+              <button style={btnWarning} onClick={handleRegenerate} disabled={generating}>
                 🔄 重新生成
               </button>
               {!editing ? (
