@@ -223,6 +223,18 @@ pub fn run_migrations(conn: &Connection) -> CoreResult<()> {
             state           TEXT NOT NULL DEFAULT 'dismissed',
             updated_at      TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS golden_three_session (
+            session_id       TEXT PRIMARY KEY,
+            project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            stage            INTEGER NOT NULL DEFAULT 1,
+            chapter_1        TEXT NOT NULL DEFAULT '',
+            chapter_2        TEXT NOT NULL DEFAULT '',
+            chapter_3        TEXT NOT NULL DEFAULT '',
+            consistency_notes TEXT NOT NULL DEFAULT '[]',
+            created_at       TEXT NOT NULL,
+            updated_at       TEXT NOT NULL
+        );
         ",
     )
     .map_err(map_err)?;
@@ -590,6 +602,9 @@ pub fn upsert_project_context(
     ctx: &ProjectContext,
     expected_version: Option<u32>,
 ) -> CoreResult<ProjectContext> {
+    // 事务锁：read + write 原子化，防止并发绕过乐观锁
+    conn.execute("BEGIN IMMEDIATE", []).map_err(map_err)?;
+
     // 乐观锁检查
     if let Some(expected) = expected_version {
         let current_version: Option<u32> = conn
@@ -604,6 +619,7 @@ pub fn upsert_project_context(
 
         if let Some(current) = current_version {
             if current != expected {
+                let _ = conn.execute("ROLLBACK", []);
                 return Err(CoreError::VersionConflict {
                     expected,
                     found: current,
@@ -652,7 +668,12 @@ pub fn upsert_project_context(
             updated_at,
         ],
     )
-    .map_err(map_err)?;
+    .map_err(|e| {
+        let _ = conn.execute("ROLLBACK", []);
+        map_err(e)
+    })?;
+
+    conn.execute("COMMIT", []).map_err(map_err)?;
 
     Ok(ProjectContext {
         project_id: ctx.project_id.clone(),
@@ -1399,6 +1420,125 @@ fn upsert_monthly_spent(conn: &Connection, year: i32, month: i32, delta: f64) ->
     )
     .map_err(map_err)?;
 
+    Ok(())
+}
+
+// =========================================================================
+// Golden Three Session CRUD (TG-1)
+// =========================================================================
+
+/// GoldenThreeState 的 DB 行表示。
+#[derive(Debug, Clone)]
+pub struct GoldenThreeSessionRow {
+    pub session_id: String,
+    pub project_id: String,
+    pub stage: i32,
+    pub chapter_1: String,
+    pub chapter_2: String,
+    pub chapter_3: String,
+    pub consistency_notes: String, // JSON array
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 保存或更新黄金三章会话。
+pub fn save_golden_three_session(
+    conn: &Connection,
+    session_id: &str,
+    project_id: &str,
+    stage: i32,
+    chapter_1: &str,
+    chapter_2: &str,
+    chapter_3: &str,
+    consistency_notes: &str,
+) -> CoreResult<()> {
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    conn.execute(
+        "INSERT INTO golden_three_session (session_id, project_id, stage,
+         chapter_1, chapter_2, chapter_3, consistency_notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+         ON CONFLICT(session_id) DO UPDATE SET
+         stage = excluded.stage,
+         chapter_1 = excluded.chapter_1,
+         chapter_2 = excluded.chapter_2,
+         chapter_3 = excluded.chapter_3,
+         consistency_notes = excluded.consistency_notes,
+         updated_at = excluded.updated_at",
+        params![session_id, project_id, stage, chapter_1, chapter_2, chapter_3, consistency_notes, now],
+    )
+    .map_err(map_err)?;
+    Ok(())
+}
+
+/// 加载指定黄金三章会话。
+pub fn load_golden_three_session(
+    conn: &Connection,
+    session_id: &str,
+) -> CoreResult<Option<GoldenThreeSessionRow>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT session_id, project_id, stage, chapter_1, chapter_2, chapter_3,
+             consistency_notes, created_at, updated_at
+             FROM golden_three_session WHERE session_id = ?1",
+        )
+        .map_err(map_err)?;
+    stmt.query_row(params![session_id], |row| {
+        Ok(GoldenThreeSessionRow {
+            session_id: row.get(0)?,
+            project_id: row.get(1)?,
+            stage: row.get(2)?,
+            chapter_1: row.get(3)?,
+            chapter_2: row.get(4)?,
+            chapter_3: row.get(5)?,
+            consistency_notes: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    })
+    .optional()
+    .map_err(map_err)
+}
+
+/// 加载指定项目未完成的黄金三章会话（stage < 4）。
+pub fn load_incomplete_golden_three_session(
+    conn: &Connection,
+    project_id: &str,
+) -> CoreResult<Option<GoldenThreeSessionRow>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT session_id, project_id, stage, chapter_1, chapter_2, chapter_3,
+             consistency_notes, created_at, updated_at
+             FROM golden_three_session WHERE project_id = ?1 AND stage < 4
+             ORDER BY updated_at DESC LIMIT 1",
+        )
+        .map_err(map_err)?;
+    stmt.query_row(params![project_id], |row| {
+        Ok(GoldenThreeSessionRow {
+            session_id: row.get(0)?,
+            project_id: row.get(1)?,
+            stage: row.get(2)?,
+            chapter_1: row.get(3)?,
+            chapter_2: row.get(4)?,
+            chapter_3: row.get(5)?,
+            consistency_notes: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    })
+    .optional()
+    .map_err(map_err)
+}
+
+/// 删除黄金三章会话。
+pub fn delete_golden_three_session(
+    conn: &Connection,
+    session_id: &str,
+) -> CoreResult<()> {
+    conn.execute(
+        "DELETE FROM golden_three_session WHERE session_id = ?1",
+        params![session_id],
+    )
+    .map_err(map_err)?;
     Ok(())
 }
 

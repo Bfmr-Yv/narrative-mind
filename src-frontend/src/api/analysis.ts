@@ -191,3 +191,15 @@ export async function continueGoldenThree(
 export async function finalizeGoldenThree(sessionId: string): Promise<GoldenThreeFinal> {
   return invoke<GoldenThreeFinal>("finalize_golden_three", { sessionId });
 }
+
+export interface ResumableSession {
+  session_id: string;
+  stage: number;
+  project_id: string;
+}
+
+export async function resumeGoldenThree(
+  projectId: string,
+): Promise<ResumableSession | null> {
+  return invoke<ResumableSession | null>("resume_golden_three", { projectId });
+}

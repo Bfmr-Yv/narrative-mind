@@ -7,8 +7,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Editor, StatusBar, StickyBoard, LibraryPanel, ProjectSettingsPanel, ImportPanel, ContextSuggestionsPanel, GoldenThreeWizard } from "./components";
-import { listProjects, listChapters, createProject, createChapter, updateChapter, deleteChapter, runAnalysis, runContinuation, onAgentProgress, onProposalReady, onAnalysisComplete, setSuggestionState, getDismissedSuggestions, clearDismissedSuggestions } from "./api";
-import type { ProjectMeta, ChapterData, AnalysisComplete } from "./api";
+import { createChapter as apiCreateChapter, updateChapter, deleteChapter, runAnalysis, runContinuation, onAgentProgress, onProposalReady, onAnalysisComplete, setSuggestionState, getDismissedSuggestions, clearDismissedSuggestions } from "./api";
+import type { ChapterData, AnalysisComplete } from "./api";
 import type { ProposalReady } from "./api/events";
 import type { AgentState, AgentAnnotation, ProjectContext, ContextSuggestion } from "./types";
 import { useAppStore } from "./store";
@@ -23,10 +23,17 @@ function App() {
   const projectContext = useAppStore((s) => s.projectContext);
   const loadProjectContext = useAppStore((s) => s.loadProjectContext);
   const saveProjectContext = useAppStore((s) => s.saveProjectContext);
+  // TG-2: 从 store 读取项目/章节列表
+  const projects = useAppStore((s) => s.projects);
+  const chapters = useAppStore((s) => s.chapters);
+  const storeLoadProjects = useAppStore((s) => s.loadProjects);
+  const storeLoadChapters = useAppStore((s) => s.loadChapters);
+  const storeCreateProject = useAppStore((s) => s.createProject);
+  const storeCreateChapter = useAppStore((s) => s.createChapter);
+  const storeUpdateChapter = useAppStore((s) => s.updateChapter);
+  const storeDeleteChapter = useAppStore((s) => s.deleteChapter);
 
   // ── 本地状态 ──
-  const [projects, setProjects] = useState<ProjectMeta[]>([]);
-  const [chapters, setChapters] = useState<ChapterData[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedChapter, setSelectedChapter] = useState<ChapterData | null>(null);
   const [editorContent, setEditorContent] = useState("");
@@ -44,17 +51,31 @@ function App() {
   const [continuationCost, setContinuationCost] = useState(0);
   const [continuing, setContinuing] = useState(false);
 
+  // ── 启动连通性检查 ──
+  useEffect(() => {
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke<[boolean, boolean, string]>("health_check").then(([ok, configured, model]) => {
+        console.log(`[Narrative Mind] Backend OK=${ok} LLM=${configured} model=${model}`);
+      }).catch(console.warn);
+    });
+  }, []);
+
   // ── 加载项目列表 ──
   useEffect(() => {
-    listProjects().then(setProjects).catch(console.error);
-  }, []);
+    storeLoadProjects().catch(console.error);
+  }, [storeLoadProjects]);
 
   // ── 加载章节列表 ──
   useEffect(() => {
     if (selectedProject) {
-      listChapters(selectedProject).then(setChapters).catch(console.error);
+      // 同步 currentProject 到 store（store actions 依赖它）
+      const projectMeta = projects.find(p => p.id === selectedProject);
+      if (projectMeta) {
+        useAppStore.setState({ currentProject: projectMeta });
+      }
+      storeLoadChapters().catch(console.error);
     }
-  }, [selectedProject]);
+  }, [selectedProject, projects, storeLoadChapters]);
 
   // ── 事件监听 ──
   useEffect(() => {
@@ -116,8 +137,7 @@ function App() {
   const handleNewProject = useCallback(async () => {
     if (!newProjectName.trim()) return;
     try {
-      const p = await createProject(newProjectName.trim());
-      setProjects((prev) => [...prev, p]);
+      const p = await storeCreateProject(newProjectName.trim());
       setSelectedProject(p.id);
       setNewProjectName("");
       setShowNewProject(false);
@@ -129,7 +149,7 @@ function App() {
     } catch (e) {
       alert(`创建项目失败: ${e}`);
     }
-  }, [newProjectName, loadProjectContext]);
+  }, [newProjectName, loadProjectContext, storeCreateProject]);
 
   // ── 新建章节 ──
   const handleNewChapter = useCallback(async () => {
@@ -137,22 +157,20 @@ function App() {
     const title = prompt("章节标题：");
     if (!title?.trim()) return;
     try {
-      const ch = await createChapter(selectedProject, title.trim(), "");
-      setChapters((prev) => [...prev, ch]);
+      const ch = await storeCreateChapter(title.trim(), "");
       setSelectedChapter(ch);
       setEditorContent(ch.text);
     } catch (e) {
       alert(`创建章节失败: ${e}`);
     }
-  }, [selectedProject]);
+  }, [selectedProject, storeCreateChapter]);
 
   // ── 删除章节 ──
   const handleDeleteChapter = useCallback(
     async (ch: ChapterData) => {
       if (!confirm(`删除章节 "${ch.title}"？`)) return;
       try {
-        await deleteChapter(ch.id);
-        setChapters((prev) => prev.filter((c) => c.id !== ch.id));
+        await storeDeleteChapter(ch.id);
         if (selectedChapter?.id === ch.id) {
           setSelectedChapter(null);
           setEditorContent("");
@@ -163,7 +181,7 @@ function App() {
         alert(`删除章节失败: ${e}`);
       }
     },
-    [selectedChapter]
+    [selectedChapter, storeDeleteChapter]
   );
 
   // ── 保存 ──
@@ -171,13 +189,15 @@ function App() {
     if (!selectedChapter) return;
     const updated = { ...selectedChapter, text: editorContent };
     try {
-      const saved = await updateChapter(updated);
-      setSelectedChapter(saved);
-      setChapters((prev) => prev.map((c) => c.id === saved.id ? saved : c));
+      await storeUpdateChapter(updated);
+      // 从 store 读取最新状态
+      const latestChapters = useAppStore.getState().chapters;
+      const saved = latestChapters.find(c => c.id === updated.id);
+      if (saved) setSelectedChapter(saved);
     } catch (e) {
       alert(`保存失败: ${e}`);
     }
-  }, [selectedChapter, editorContent]);
+  }, [selectedChapter, editorContent, storeUpdateChapter]);
 
   // ── Ctrl+S ──
   useEffect(() => {
@@ -275,7 +295,7 @@ function App() {
       } else if (path.startsWith("world_rules.")) {
         const field = path.replace("world_rules.", "");
         const wr = updated.world_rules ?? { magic_system: "", technology_level: "", social_structure: "", geography: "", custom_rules: [] };
-        (wr as Record<string, unknown>)[field] = suggestion.suggested_value;
+        (wr as unknown as Record<string, unknown>)[field] = suggestion.suggested_value;
         updated.world_rules = wr;
       }
       await saveProjectContext(updated, ctx.context_version);
@@ -506,8 +526,7 @@ function App() {
               projectContext={projectContext}
               onComplete={async () => {
                 // 重新加载章节列表
-                const chs = await listChapters(selectedProject);
-                setChapters(chs);
+                await storeLoadChapters();
               }}
               onClose={() => setViewMode("editor")}
             />

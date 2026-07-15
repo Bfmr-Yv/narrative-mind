@@ -174,6 +174,14 @@ impl LlmClientImpl {
 
 #[async_trait]
 impl LlmClient for LlmClientImpl {
+    fn is_configured(&self) -> bool {
+        self.config.is_configured
+    }
+
+    fn model_name(&self) -> &str {
+        &self.config.model
+    }
+
     async fn call_agent(
         &self,
         prompt_key: &str,

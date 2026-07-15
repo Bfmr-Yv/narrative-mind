@@ -86,7 +86,8 @@ pub fn delete_chapter(state: State<'_, AppState>, id: String) -> Result<(), Stri
 #[tauri::command]
 pub async fn health_check(state: State<'_, AppState>) -> Result<(bool, bool, String), String> {
     let configured = state.llm_client.is_configured();
-    Ok((true, configured, "llm_client".into()))
+    let model = state.llm_client.model_name().to_string();
+    Ok((true, configured, model))
 }
 
 // ── 分析 ──
@@ -325,7 +326,7 @@ pub async fn expand_context_section(
     let reference = state
         .project_manager
         .get_project_context(&project_id)
-        .unwrap_or(None)
+        .ok().flatten()
         .map(|pctx| serde_json::to_string(&pctx).unwrap_or_default())
         .unwrap_or_default();
 
@@ -336,7 +337,7 @@ pub async fn expand_context_section(
 
     let response = state
         .llm_client
-        .call_agent("expand_context", &vars, TaskType::SceneAnalysis)
+        .call_agent("expand_context", &vars, TaskType::ExpandContext)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -405,7 +406,7 @@ pub struct ContinuationOutput {
 #[tauri::command]
 pub async fn run_continuation(
     state: State<'_, AppState>,
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
     chapter_id: String,
     editor_text: String,
 ) -> Result<ContinuationOutput, String> {
@@ -497,6 +498,16 @@ pub async fn start_golden_three(
     state.golden_three_sessions.lock().map_err(|e| e.to_string())?
         .insert(session_id.clone(), gts);
 
+    // 持久化到 SQLite
+    let db_path = state.project_manager.db_path();
+    if let Ok(conn) = xmgl_memory::open_connection(db_path) {
+        let notes_json = serde_json::to_string(&consistency_notes).unwrap_or_default();
+        let _ = xmgl_memory::save_golden_three_session(
+            &conn, &session_id, &project_id, 1,
+            &chapter_text, "", "", &notes_json,
+        );
+    }
+
     Ok(GoldenThreeOutput { session_id, stage: 1, chapter_text, consistency_notes })
 }
 
@@ -566,7 +577,19 @@ pub async fn continue_golden_three(
     gts.consistency_notes.extend(notes.clone());
 
     state.golden_three_sessions.lock().map_err(|e| e.to_string())?
-        .insert(session_id.clone(), gts);
+        .insert(session_id.clone(), gts.clone());
+
+    // 持久化到 SQLite
+    let db_path = state.project_manager.db_path();
+    if let Ok(conn) = xmgl_memory::open_connection(db_path) {
+        let notes_json = serde_json::to_string(&gts.consistency_notes).unwrap_or_default();
+        let _ = xmgl_memory::save_golden_three_session(
+            &conn, &session_id, &gts.project_id,
+            target_stage as i32,
+            &gts.chapter_1, &gts.chapter_2, &gts.chapter_3,
+            &notes_json,
+        );
+    }
 
     Ok(GoldenThreeOutput { session_id, stage: target_stage, chapter_text, consistency_notes: notes })
 }
@@ -578,11 +601,62 @@ pub fn finalize_golden_three(
 ) -> Result<GoldenThreeFinal, String> {
     let mut sessions = state.golden_three_sessions.lock().map_err(|e| e.to_string())?;
     let gts = sessions.remove(&session_id).ok_or("session not found")?;
+
+    // 从 SQLite 删除（完成后的会话无需保留）
+    let db_path = state.project_manager.db_path();
+    if let Ok(conn) = xmgl_memory::open_connection(db_path) {
+        let _ = xmgl_memory::delete_golden_three_session(&conn, &session_id);
+    }
+
     Ok(GoldenThreeFinal {
         chapter_1: gts.chapter_1,
         chapter_2: gts.chapter_2,
         chapter_3: gts.chapter_3,
     })
+}
+
+/// 检查可恢复的黄金三章会话。
+///
+/// 返回未完成的 session（stage < 4），供前端启动时查询。
+#[derive(serde::Serialize)]
+pub struct ResumableSession {
+    pub session_id: String,
+    pub stage: u8,
+    pub project_id: String,
+}
+
+#[tauri::command]
+pub fn resume_golden_three(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Option<ResumableSession>, String> {
+    let db_path = state.project_manager.db_path();
+    let conn = xmgl_memory::open_connection(db_path).map_err(|e| e.to_string())?;
+
+    match xmgl_memory::load_incomplete_golden_three_session(&conn, &project_id)
+        .map_err(|e| e.to_string())?
+    {
+        Some(row) => {
+            // 恢复内存会话
+            let gts = GoldenThreeState {
+                stage: row.stage as u8,
+                project_id: row.project_id.clone(),
+                chapter_1: row.chapter_1.clone(),
+                chapter_2: row.chapter_2.clone(),
+                chapter_3: row.chapter_3.clone(),
+                consistency_notes: serde_json::from_str(&row.consistency_notes).unwrap_or_default(),
+            };
+            state.golden_three_sessions.lock().map_err(|e| e.to_string())?
+                .insert(row.session_id.clone(), gts);
+
+            Ok(Some(ResumableSession {
+                session_id: row.session_id,
+                stage: row.stage as u8,
+                project_id: row.project_id,
+            }))
+        }
+        None => Ok(None),
+    }
 }
 
 // ── 建议状态管理 (Phase C) ──

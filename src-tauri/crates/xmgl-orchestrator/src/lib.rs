@@ -1147,7 +1147,7 @@ impl Orchestrator {
 
         if let Some(obs) = observer {
             obs.on_analysis_complete(
-                "",
+                &uuid::Uuid::new_v4().to_string(),
                 total_cost_usd,
                 total_latency_ms,
                 all_agents.len() as u32,
@@ -1199,6 +1199,12 @@ impl Orchestrator {
                     AgentId::Conception,
                     AgentId::EditorInChief,
                     AgentId::EntityExtract,
+                    AgentId::WorldRuleExtract,
+                    AgentId::CharacterProfileExtract,
+                    AgentId::PlotStructureExtract,
+                    AgentId::StyleExtract,
+                    AgentId::ContextReflection,
+                    AgentId::Continuation,
                 ],
             },
             complexity: TaskComplexity::FullScene,
@@ -1503,7 +1509,7 @@ impl Orchestrator {
     pub async fn run_golden_three_chapter(
         &self,
         project_context: &ProjectContext,
-        chapter_number: u8,
+        _chapter_number: u8,
         previous_chapters: &[String],
         consistency_notes: &[String],
         registry: &AgentRegistry,
@@ -1525,7 +1531,7 @@ impl Orchestrator {
         }
 
         // 构建 SharedContext
-        let mut ctx = SharedContext::new("", &context_text);
+        let mut ctx = SharedContext::new(&project_context.project_id, &context_text);
         ctx.metadata.insert("project_context_json".into(), pctx_json);
         if let Some(ref sg) = project_context.style_guide {
             if let Ok(json) = serde_json::to_string(sg) {

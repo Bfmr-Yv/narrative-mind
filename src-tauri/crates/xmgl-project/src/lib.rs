@@ -43,9 +43,10 @@ impl ProjectManager {
     ///
     /// 成功返回 `ProjectManager`，数据库文件位于 `db_path`。
     pub fn new(db_path: &str) -> CoreResult<Self> {
-        // 初始化数据库并立即运行 migrations
+        // 初始化数据库并运行 migrations。
+        // init_db 打开连接并执行 DDL，之后连接可以被安全关闭
+        // （文件数据库数据已持久化到磁盘，:memory: 数据库会在关闭时丢失数据）。
         let conn = xmgl_memory::init_db(db_path)?;
-        // init_db 已经执行了 migrations，这里只需验证连接可用
         conn.close()
             .map_err(|(_, e)| CoreError::Internal(format!("close db: {e}")))?;
 
@@ -234,9 +235,10 @@ impl ProjectManager {
     /// 从 v3.1 JSON 项目目录迁移数据。
     ///
     /// Phase B: stub 实现，总是返回空报告。
-    /// Phase C: 实现实际迁移逻辑（解析旧 JSON → 写入新 SQLite）。
+    /// Phase E: 实现实际迁移逻辑（解析旧 JSON → 写入新 SQLite）。
+    #[allow(dead_code)]
     pub fn migrate_from_v3(&self, _v3_project_path: &str) -> CoreResult<MigrationReport> {
-        // TODO Phase C: 实现迁移逻辑
+        // TODO Phase E: 实现 v3.1 JSON → v4.0 SQLite 迁移逻辑
         Ok(MigrationReport {
             projects_migrated: 0,
             chapters_migrated: 0,

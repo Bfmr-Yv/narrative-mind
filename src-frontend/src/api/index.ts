@@ -41,8 +41,9 @@ export {
   startGoldenThree,
   continueGoldenThree,
   finalizeGoldenThree,
+  resumeGoldenThree,
 } from "./analysis";
-export type { AnalysisOutput, AgentOutput } from "./analysis";
+export type { AnalysisOutput, AgentOutput, ResumableSession } from "./analysis";
 
 // Phase L1: 实体 CRUD
 export {
@@ -66,4 +67,7 @@ export {
   listProjectSettings,
   setProjectSetting,
   deleteProjectSetting,
+  // ProjectContext
+  getProjectContext,
+  saveProjectContext,
 } from "./entities";

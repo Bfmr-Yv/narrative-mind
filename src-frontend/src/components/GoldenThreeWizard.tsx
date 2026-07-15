@@ -4,10 +4,10 @@
  * 4 步交互: 前置检查 → Ch1 → Ch2 → Ch3 → 完成保存
  */
 
-import { useState, useCallback, type FC } from "react";
+import { useState, useCallback, useEffect, type FC } from "react";
 import type { ProjectContext } from "../types";
-import { startGoldenThree, continueGoldenThree, finalizeGoldenThree, createChapter } from "../api";
-import type { GoldenThreeOutput, GoldenThreeFinal } from "../api/analysis";
+import { startGoldenThree, continueGoldenThree, finalizeGoldenThree, resumeGoldenThree, createChapter } from "../api";
+import type { GoldenThreeOutput } from "../api/analysis";
 
 // ── Props ──
 
@@ -62,8 +62,48 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
   const [generating, setGenerating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const missing = checkPrereqs(projectContext);
+
+  // ── 恢复未完成会话 ──
+  const [resuming, setResuming] = useState(false);
+  const [resumableSession, setResumableSession] = useState<{ session_id: string; stage: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    resumeGoldenThree(projectId).then(session => {
+      if (!cancelled && session) {
+        setResumableSession({ session_id: session.session_id, stage: session.stage });
+      }
+    }).catch(() => { /* 静默失败 */ });
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  const handleResume = useCallback(async () => {
+    if (!resumableSession) return;
+    setResuming(true);
+    setSessionId(resumableSession.session_id);
+    // 继续生成下一章（不传 edited_chapter，不传 regenerate）
+    setGenerating(true);
+    try {
+      const result = await continueGoldenThree(resumableSession.session_id, undefined, false);
+      setChapters(prev => {
+        const next = { ...prev };
+        if (result.stage === 2) next.ch2 = result.chapter_text;
+        if (result.stage === 3) next.ch3 = result.chapter_text;
+        return next;
+      });
+      setNotes(result.consistency_notes);
+      setStep(result.stage);
+    } catch (e) {
+      setError(`恢复失败: ${e}`);
+      setResumableSession(null);
+    } finally {
+      setGenerating(false);
+      setResuming(false);
+    }
+  }, [resumableSession]);
 
   // ── 开始生成 ──
   const handleStart = useCallback(async () => {
@@ -75,7 +115,7 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
       setNotes(result.consistency_notes);
       setStep(1);
     } catch (e) {
-      alert(`生成失败: ${e}`);
+      setError(`生成失败: ${e}`);
     } finally {
       setGenerating(false);
     }
@@ -98,7 +138,7 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
       setNotes(result.consistency_notes);
       setStep(result.stage);
     } catch (e) {
-      alert(`生成失败: ${e}`);
+      setError(`生成失败: ${e}`);
     } finally {
       setGenerating(false);
     }
@@ -122,7 +162,7 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
       setNotes(result.consistency_notes);
       // stage 不变，因为是重新生成
     } catch (e) {
-      alert(`重新生成失败: ${e}`);
+      setError(`重新生成失败: ${e}`);
     } finally {
       setGenerating(false);
     }
@@ -140,7 +180,7 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
       setStep(4);
       await onComplete();
     } catch (e) {
-      alert(`保存失败: ${e}`);
+      setError(`保存失败: ${e}`);
     } finally {
       setGenerating(false);
     }
@@ -182,6 +222,19 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
 
       {/* Body */}
       <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
+        {/* 错误提示 toast */}
+        {error && (
+          <div style={{
+            padding: "8px 12px", background: "#fce8e6", color: "#c5221f",
+            borderRadius: 4, marginBottom: 8, fontSize: 12, display: "flex", alignItems: "center", gap: 8,
+          }}>
+            <span style={{ flex: 1 }}>❌ {error}</span>
+            <button onClick={() => setError(null)} style={{
+              border: "none", background: "transparent", cursor: "pointer",
+              fontSize: 14, color: "#c5221f",
+            }}>✕</button>
+          </div>
+        )}
         {/* Step 0: 前置检查 */}
         {step === 0 && (
           <div style={{ textAlign: "center", padding: 40 }}>
@@ -190,6 +243,27 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
             <p style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>
               AI 将基于你的创作上下文自动生成开篇三章。
             </p>
+            {resumableSession && !resuming && (
+              <div style={{
+                textAlign: "left", padding: 16, background: "#e8f0fe",
+                borderRadius: 6, marginBottom: 16, fontSize: 12,
+              }}>
+                <strong style={{ color: "#1967d2" }}>📌 检测到未完成的黄金三章生成</strong>
+                <p style={{ margin: "8px 0"}}>
+                  上次生成到第 {resumableSession.stage} 章，是否继续？
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button style={{ ...btnPrimary, background: "#1967d2" }}
+                    onClick={handleResume} disabled={generating}>
+                    ▶ 继续生成
+                  </button>
+                  <button style={btnSecondary}
+                    onClick={() => setResumableSession(null)}>
+                    忽略，重新开始
+                  </button>
+                </div>
+              </div>
+            )}
             {missing.length > 0 ? (
               <div style={{
                 textAlign: "left", padding: 16, background: "#fef7e0",
@@ -263,7 +337,7 @@ export const GoldenThreeWizard: FC<Props> = ({ projectId, projectContext, onComp
                   ✏️ 修改
                 </button>
               ) : (
-                <button style={btnSecondary} onClick={() => setEditing(false)}>
+                <button style={btnSecondary} onClick={() => { setEditing(false); setEditText(""); }}>
                   👁️ 预览
                 </button>
               )}

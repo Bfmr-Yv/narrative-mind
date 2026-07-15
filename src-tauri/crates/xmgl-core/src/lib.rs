@@ -184,6 +184,8 @@ pub enum TaskType {
     CharacterProfileExtract,
     PlotStructureExtract,
     StyleExtract,
+    // Phase B: 上下文扩展
+    ExpandContext,
     // Phase C: 分析闭环
     ContextReflection,
     // Phase D: 生成能力
@@ -214,6 +216,7 @@ impl TaskType {
             TaskType::CharacterProfileExtract => "character_profile_extract",
             TaskType::PlotStructureExtract => "plot_structure_extract",
             TaskType::StyleExtract => "style_extract",
+            TaskType::ExpandContext => "expand_context",
             TaskType::ContextReflection => "context_reflection",
             TaskType::Continuation => "continuation",
         }
@@ -246,6 +249,7 @@ impl FromStr for TaskType {
             "character_profile_extract" => Ok(TaskType::CharacterProfileExtract),
             "plot_structure_extract" => Ok(TaskType::PlotStructureExtract),
             "style_extract" => Ok(TaskType::StyleExtract),
+            "expand_context" => Ok(TaskType::ExpandContext),
             "context_reflection" => Ok(TaskType::ContextReflection),
             "continuation" => Ok(TaskType::Continuation),
             _ => Err(format!("unknown TaskType: {s}")),
@@ -660,6 +664,11 @@ pub trait LlmClient: Send + Sync {
     /// 是否已配置 API Key（LLM 可用）。
     fn is_configured(&self) -> bool {
         true
+    }
+
+    /// 返回当前使用的模型名称（provider/model 格式）。
+    fn model_name(&self) -> &str {
+        "unknown"
     }
 }
 

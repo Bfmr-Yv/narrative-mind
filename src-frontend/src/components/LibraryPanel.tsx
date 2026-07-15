@@ -10,7 +10,7 @@ import type { Character, Location, ForeshadowEntry } from "../types";
 
 // ── 类型 ──
 
-type TabKey = "character" | "location" | "setting" | "foreshadow";
+type TabKey = "character" | "location" | "setting" | "foreshadow" | "timeline";
 
 // ── 角色状态指示 ──
 
@@ -86,12 +86,14 @@ export const LibraryPanel: FC<Props> = ({ projectId }) => {
   const locations = useAppStore((s) => s.locations);
   const foreshadows = useAppStore((s) => s.foreshadows);
   const settings = useAppStore((s) => s.settings);
+  const timeline = useAppStore((s) => s.timeline);
   const selectedEntity = useAppStore((s) => s.selectedEntity);
   const editingEntity = useAppStore((s) => s.editingEntity);
   const loadCharacters = useAppStore((s) => s.loadCharacters);
   const loadLocations = useAppStore((s) => s.loadLocations);
   const loadForeshadows = useAppStore((s) => s.loadForeshadows);
   const loadSettings = useAppStore((s) => s.loadSettings);
+  const loadTimeline = useAppStore((s) => s.loadTimeline);
   const createCharacter = useAppStore((s) => s.createCharacter);
   const updateCharacter = useAppStore((s) => s.updateCharacter);
   const deleteCharacter = useAppStore((s) => s.deleteCharacter);
@@ -125,6 +127,7 @@ export const LibraryPanel: FC<Props> = ({ projectId }) => {
       loadLocations();
       loadForeshadows();
       loadSettings();
+      loadTimeline();
     }
   }, [collapsed, projectId]);
 
@@ -328,6 +331,19 @@ export const LibraryPanel: FC<Props> = ({ projectId }) => {
     );
   };
 
+  // ── 时间线行 ──
+  const renderTimelineRow = (e: import("../types").TimelineEvent) => (
+    <div
+      key={e.id}
+      style={{
+        padding: "4px 8px", fontSize: 12, marginBottom: 1,
+        borderLeft: "3px solid #2196f3", paddingLeft: 6,
+      }}
+    >
+      ⏱️ {e.chapter_title}: {e.description.length > 30 ? e.description.slice(0, 30) + "…" : e.description}
+    </div>
+  );
+
   // ── 内联编辑面板 ──
   const renderEditPanel = () => {
     if (!editingEntity) return null;
@@ -479,6 +495,7 @@ export const LibraryPanel: FC<Props> = ({ projectId }) => {
               ["location", "🌍地点"],
               ["setting", "📋设定"],
               ["foreshadow", "🔮伏笔"],
+              ["timeline", "⏱️时间线"],
             ] as [TabKey, string][]).map(([k, label]) => (
               <button
                 key={k}
@@ -508,10 +525,12 @@ export const LibraryPanel: FC<Props> = ({ projectId }) => {
             {tab === "location" && locations.map(renderLocationRow)}
             {tab === "setting" && settings.map(renderSettingRow)}
             {tab === "foreshadow" && foreshadows.map(renderForeshadowRow)}
+            {tab === "timeline" && timeline.map(renderTimelineRow)}
             {tab === "character" && characters.length === 0 && <EmptyHint />}
             {tab === "location" && locations.length === 0 && <EmptyHint />}
             {tab === "setting" && settings.length === 0 && <EmptyHint />}
             {tab === "foreshadow" && foreshadows.length === 0 && <EmptyHint />}
+            {tab === "timeline" && timeline.length === 0 && <EmptyHint />}
           </div>
 
           {/* 操作按钮 */}

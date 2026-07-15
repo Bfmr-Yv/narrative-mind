@@ -31,9 +31,8 @@ pub struct AppState {
     pub orchestrator: Orchestrator,
     /// Phase D: 黄金三章生成会话。
     ///
-    /// 会话仅在内存中维护，**应用重启后丢失**。
-    /// 用户需在一次运行中完成"启动→生成→确认保存"全流程。
-    /// 如遇到异常退出，重新打开黄金三章向导即可开始新会话。
+    /// 内存热缓存 + SQLite 持久层。每次章节生成后自动写入 SQLite，
+    /// 应用重启后可通过 `resume_golden_three` 命令恢复未完成的会话。
     pub golden_three_sessions: Mutex<HashMap<String, GoldenThreeState>>,
 }
 
@@ -185,41 +184,6 @@ impl AnalysisObserver for TauriAnalysisObserver {
         );
     }
 }
-
-// =========================================================================
-// main.rs 集成参考（Phase B）
-// =========================================================================
-
-// Phase B 的 `main.rs` 应类似：
-//
-// ```ignore
-// use xmgl_tauri::{AppState, commands};
-//
-// fn main() {
-//     let app_state = AppState::new("xmgl.db", None)
-//         .expect("应用初始化失败");
-//
-//     tauri::Builder::default()
-//         .manage(app_state)
-//         .invoke_handler(tauri::generate_handler![
-//             commands::list_projects,
-//             commands::create_project,
-//             commands::get_project,
-//             commands::delete_project,
-//             commands::list_chapters,
-//             commands::create_chapter,
-//             commands::get_chapter,
-//             commands::update_chapter,
-//             commands::delete_chapter,
-//             commands::health_check,
-//         ])
-//         .run(tauri::generate_context!())
-//         .expect("无法启动 Tauri 应用");
-// }
-// ```
-//
-// Phase D 接入 Orchestrator 后追加 agent:progress / proposal:ready
-// / analysis:complete 事件的 emit 逻辑。
 
 // =========================================================================
 // Tests

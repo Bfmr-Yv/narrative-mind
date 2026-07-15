@@ -138,6 +138,7 @@ export interface LLMCallResponse {
 // =========================================================================
 
 export interface AgentFinding {
+  id: string;
   agent_id: AgentId;
   severity: Severity;
   title: string;

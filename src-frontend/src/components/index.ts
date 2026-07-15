@@ -4,7 +4,8 @@
 
 export { Editor } from "./Editor";
 export { StatusBar } from "./StatusBar";
-export { AnalysisPanel } from "./AnalysisPanel";
+// AnalysisPanel 已废弃，由 StickyBoard 替代。
+// export { AnalysisPanel } from "./AnalysisPanel";
 export { ProgressBar } from "./ProgressBar";
 export { FindingsCard } from "./FindingsCard";
 export { PADView } from "./PADView";

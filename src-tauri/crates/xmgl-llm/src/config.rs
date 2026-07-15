@@ -32,17 +32,8 @@ pub const MIMO_COST_OUTPUT_1K: f64 = 0.006;
 pub const MIMO_FLASH_COST_INPUT_1K: f64 = 0.001;
 pub const MIMO_FLASH_COST_OUTPUT_1K: f64 = 0.002;
 
-// 月度预算强硬上限
-pub const MONTHLY_BUDGET_USD: f64 = 20.00;
-
-// 三层熔断阈值
-pub const MELTDOWN_WARN_RATIO: f64 = 0.50;
-pub const MELTDOWN_RESTRICT_RATIO: f64 = 0.80;
-pub const MELTDOWN_BLOCK_RATIO: f64 = 0.95;
-
-// API 超时
-pub const API_TIMEOUT_SECS: u64 = 25;
-pub const MAX_RETRIES: u32 = 2;
+// 月度预算上限 + 熔断阈值 — 保留以备 Phase F 成本追踪集成。
+// API 超时/重试 — 已移至 client.rs 内联常量。
 
 // =========================================================================
 // Provider 检测

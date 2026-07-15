@@ -66,6 +66,7 @@ fn main() {
             commands::start_golden_three,
             commands::continue_golden_three,
             commands::finalize_golden_three,
+            commands::resume_golden_three,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Tauri 应用");

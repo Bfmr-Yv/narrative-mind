@@ -1,4 +1,4 @@
-//! xmgl-agent — Agent trait、注册表、生命周期管理、9 个 Agent 实现
+//! xmgl-agent — Agent trait、注册表、生命周期管理、16 个 Agent 实现
 //!
 //! Phase B: 定义 Agent trait、AgentRegistry、SharedContext、Agent 骨架。
 //! Phase C: 填充各 Agent 的实际分析逻辑。
@@ -182,6 +182,13 @@ impl SharedContext {
                     .entry("imagery_keywords".into())
                     .or_insert(tm.imagery_motifs.join(", "));
             }
+        }
+
+        // project_context_json — 完整 ProjectContext JSON（供 ContinuationAgent 等使用）
+        if let Ok(json) = serde_json::to_string(pctx) {
+            self.metadata
+                .entry("project_context_json".into())
+                .or_insert(json);
         }
     }
 }

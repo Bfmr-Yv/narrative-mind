@@ -137,8 +137,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   createProject: async (name: string) => {
     const project = await api.createProject(name);
-    // 乐观更新：把新项目放进列表
-    set((state) => ({ projects: [project, ...state.projects] }));
+    // 乐观更新 + 设为当前项目
+    set((state) => ({
+      projects: [project, ...state.projects],
+      currentProject: project,
+    }));
     return project;
   },
 
